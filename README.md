@@ -1,0 +1,147 @@
+# yinian-plugin-template
+
+[一念（Yinian）](https://github.com/VangelisHaha/nikou-agenda)插件的官方模板。四个扩展点各一个能跑通的示例，外加一个不装一念也能开发的模拟宿主。
+
+```bash
+npm install
+npm run verify   # typecheck + doctor + 测试（含 mock host 端到端）
+```
+
+`npm run verify` 全绿说明这个包装进一念不会被拒。
+
+## 从模板到你的插件
+
+1. 改 `yinian-plugin.json`：`id`（会成为安装目录名，`^[a-z0-9][a-z0-9-]{1,62}$`）、`name`、`author`、`description`、`homepage`。
+2. 只留你真正实现的扩展点。`contributes` 里声明了什么，宿主就只调什么——声明多了会被 `doctor` 拦下来。
+3. 按需要改 `permissions`。**声明什么，安装界面就把什么摊给用户看**；一期没有沙箱，所以少声明不会被拦住，但那等于骗用户。`doctor` 会扫源码里的 `fetch` / `spawn` 帮你对一遍。
+4. 改 `src/handlers/` 下的示例，把假数据换成真实 API。
+5. 改 `settings.plugin.json` / `settings.integration.json`。凭据这类跟账号绑定的放**实例级**，一份代码共享的放插件级。
+6. `npm run verify`，然后 `npm run mock -- --verbose` 看一遍完整的帧交互。
+
+## 目录
+
+```
+yinian-plugin.json          # manifest，必须在包根目录
+settings.plugin.json        # 插件级设置面板（可选）
+settings.integration.json   # 实例级设置面板（可选）
+src/
+├── main.mts                # 入口：方法名 → handler 的映射，别在这写业务
+├── sdk/                    # 薄 SDK，不用改
+│   ├── protocol.mts        # 协议层类型 + 超时表 + 方法名规则
+│   ├── types.mts           # 扩展点 DTO（字段名就是线格式）
+│   └── runtime.mts         # RPC 循环、host.log / progress / setState
+└── handlers/               # 你要改的部分
+    ├── sync.mts            # sync.pull / sync.push
+    ├── hooks.mts           # hook.dispatch（含幂等示例）
+    ├── notify.mts          # notify.send
+    └── config.mts          # config.validate + action + optionsFrom
+scripts/
+├── doctor.mjs              # 契约自检
+└── mock-host.mjs           # 模拟宿主，走完整生命周期
+dist/main.mjs               # 构建产物，manifest 的 entry 指向它
+```
+
+源码用 `.mts` 是有原因的：`tsc` 会把它编译成 `.mjs`，于是插件包**不需要带 `package.json`**——只要 manifest 加 `dist/` 就能跑。
+
+## SDK 替你处理掉的四件事
+
+| 问题 | SDK 的做法 |
+|---|---|
+| `console.log` 污染协议流 | 启动时把 `console.*` 重定向到 stderr。你照常用它调试，宿主会把 stderr 收进插件日志 |
+| 响应里的换行把帧拆两半 | 统一 `JSON.stringify` 单行输出 |
+| handler 抛异常导致进程崩 | 转成 JSON-RPC error 响应，进程继续活着 |
+| async handler 交叠执行 | 按收到顺序排队，同一时刻只跑一个 |
+
+**唯一的硬规则：stdout 只准写协议帧。** 违反会被记 `PLUGIN_CONTRACT_VIOLATION`。
+
+## 四个扩展点
+
+### 同步（`sync.pull` / `sync.push`）
+
+- **插件不写库。** 返回数据就够了，冲突判定、去重、落库全在一念核心。你也拿不到本地任务状态，这是故意的。
+- 分页靠游标：`hasMore: true` 时宿主带着你给的 `cursor` 再调一次，最多 20 轮。
+- `completedAt` **不知道就别传**。传当前时间会让历史任务全堆在同一秒。
+- `remoteUpdatedAt` 尽量给，宿主的字段级冲突判定靠它。
+- `sync.push` 返回 `applied: false` 表示「外部本来就是目标状态」，宿主视为成功且不重试。
+- 你在 `capabilities.actions` 里没声明的动作宿主不会下发；`delete` 不支持时它会自动降级成 `cancel` 或 `complete`。
+
+### 生命周期钩子（`hook.dispatch`）
+
+投递保证是**至少一次**。同一条事件会因为宿主重启、上次投递超时、断路器恢复而重来，所以**必须按 `outboxId` 幂等**，并且把去重集合存进 `host.setState` —— 只放内存的话进程一重启就全忘了，用户会看到重复的外部动作。
+
+重复投递时返回 `{ ok: true }`，不要报错——报错只会让宿主白白重试。
+
+### 通知渠道（`notify.send`）
+
+**通知不重试。** 半小时后重投一条「任务即将到期」是噪声不是补救，所以失败就返回 `delivered: false` 加原因，不要自己排重试队列。
+
+只有 manifest 里 `supportsActions: true` 的渠道才会收到 `actions`。
+
+### 设置面板（`config.validate` + `action`）
+
+宿主先按 schema 校验形状（必填、类型、范围），过了才调 `config.validate` 让你做**语义**校验（凭据对不对、账号有没有权限）。所以别重复检查必填。
+
+校验失败要带 `field`，它会被精确定位到面板上的那一格；只给整体 message 的话用户只看到一句「配置无效」。
+
+`action` 的返回值：
+
+```ts
+{ message?: string; openUrl?: string; patch?: Record<string, unknown> }
+```
+
+`openUrl` 由宿主用系统浏览器打开，只接受 http/https。**这是 OAuth 类插件把授权链接递给用户的唯一方式**——插件画不了界面。
+
+**不要在 action 里长轮询**：它只有 15 秒超时，而且启用前的临时进程会被回收，后台任务活不下来。要等就等在 `config.validate`（30 秒）里。
+
+## 超时
+
+| 方法 | 超时 |
+|---|---|
+| `plugin.init` / `config.validate` | 30s |
+| `config.schema` / 自定义方法 | 15s |
+| `sync.pull` / `sync.push` | 120s |
+| `hook.dispatch` / `notify.send` | 30s |
+| `plugin.shutdown` | 5s，超了 SIGKILL |
+
+超时即失败，宿主会杀掉当前调用（`sync.*` 会连带重启进程，避免半截状态）。失败按 `1s → 2s → 4s → 8s → 16s` 退避重试，上限 5 次；连续 5 次失败打开断路器，冷却 5 分钟。
+
+**同一插件的调用是串行的**，不要假设 `sync.pull` 和 `hook.dispatch` 会并发进来。
+
+## 常见错误码
+
+按 `code` 分支判断，**不要匹配 message 文案**——文案会随 i18n 变。
+
+| 码 | 什么意思 | 通常怎么办 |
+|---|---|---|
+| `MANIFEST_INVALID` | manifest 字段不合法 | 跑 `npm run doctor` |
+| `MANIFEST_INCOMPATIBLE` | 要求的宿主版本比用户装的新 | 降 `minHostVersion` 或让用户升级 |
+| `PLUGIN_RUNTIME_MISSING` | 本机 `node` 不满足 `runtime.node` | 放宽版本要求 |
+| `PLUGIN_SPAWN_FAILED` | 进程起不来 | 检查 entry 路径与文件权限 |
+| `PLUGIN_RPC_TIMEOUT` | 某次调用超时 | 看上面的超时表，拆小或改成分页 |
+| `PLUGIN_RPC_CRASH` | 调用期间进程退出 | 崩溃前最后 20 行 stderr 会附在诊断里 |
+| `PLUGIN_CONTRACT_VIOLATION` | 返回值缺字段、往 stdout 写了非协议行、主动发 request | 最常见是忘删的 `console.log`（SDK 已帮你重定向） |
+| `PLUGIN_PERMISSION_DENIED` | 调了未声明 scope 的回环 API | 在 `permissions.api` 里补声明 |
+| `PLUGIN_CONFIG_INVALID` | `config.validate` 没通过 | 这是你自己返回的 |
+| `PLUGIN_BREAKER_OPEN` | 断路器熔断中 | 等冷却，或在诊断面板手动重置 |
+| `PLUGIN_TAMPERED` | 安装后文件被改过 | 重装 |
+
+同步诊断码不是错误，是关联状态：`SYNC_CONFLICT`（等人工决定）、`SYNC_REMOTE_DELETED`（外部消失，本地保留）、`SYNC_POSSIBLE_DUPLICATE`、`SYNC_PUSH_UNSUPPORTED`（能力不足且无法降级）。
+
+## 调试
+
+```bash
+npm run mock -- --verbose   # 打印每一帧收发
+```
+
+装进一念之后：设置 → 插件 → 开发者模式 → 从目录加载，然后用插件卡片上的「查看日志」看带 `traceId` 的结构化日志。`traceId` 能把一次操作贯穿宿主与插件两侧。
+
+## 发布
+
+1. `npm run verify` 全绿。
+2. 打一个 zip，**解压后顶层就是包结构**（不要多包一层目录），至少包含 `yinian-plugin.json`、`dist/`、用到的 `settings.*.json`、`README.md`。
+3. 建 GitHub Release，**tag 必须与 manifest 的 `version` 完全一致**，把 zip 作为资产上传。
+4. 想进插件市场就往 [yinian-plugins](https://github.com/VangelisHaha/yinian-plugins) 提一条索引记录。
+
+## 契约
+
+完整契约在一念仓库的 [`docs/11-plugin-architecture.md`](https://github.com/VangelisHaha/nikou-agenda/blob/main/docs/11-plugin-architecture.md)，**那是 source of truth**。本模板的 SDK 对应 `PROTOCOL_VERSION = 1`，与文档不一致时以文档为准。

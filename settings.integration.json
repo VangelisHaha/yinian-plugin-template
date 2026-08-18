@@ -1,0 +1,60 @@
+{
+  "scope": "integration",
+  "fields": [
+    {
+      "key": "project",
+      "type": "enum",
+      "label": "同步哪个项目",
+      "required": true,
+      "optionsFrom": "rpc:template.listProjects",
+      "help": "选项由插件在运行时提供，所以要先填好插件级的凭据"
+    },
+    {
+      "key": "onlyIncomplete",
+      "type": "boolean",
+      "label": "只同步未完成的",
+      "default": true
+    },
+    {
+      "key": "tagMapping",
+      "type": "multi-enum",
+      "label": "自动打上这些标签",
+      "optionsFrom": "host:tags",
+      "maxItems": 5,
+      "help": "选项来自一念现有的标签，不用手抄"
+    },
+    {
+      "key": "advanced",
+      "type": "group",
+      "label": "高级",
+      "fields": [
+        {
+          "key": "lookbackDays",
+          "type": "integer",
+          "label": "回溯天数",
+          "default": 30,
+          "min": 1,
+          "max": 365,
+          "help": "首次同步往前拉多久"
+        },
+        {
+          "key": "requestTimeout",
+          "type": "duration",
+          "label": "单次请求超时",
+          "default": 30,
+          "min": 5,
+          "max": 120,
+          "unit": "seconds",
+          "help": "注意 sync.pull 整体只有 120 秒"
+        }
+      ]
+    },
+    {
+      "key": "debugNote",
+      "type": "note",
+      "label": "调试",
+      "text": "打开插件卡片的「查看日志」能看到每次同步的 `traceId`，用它把一次操作的日志串起来。",
+      "visibleWhen": { "field": "onlyIncomplete", "equals": false }
+    }
+  ]
+}

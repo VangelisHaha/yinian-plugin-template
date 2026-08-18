@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 1,
+  "id": "yinian-plugin-template",
+  "name": "插件模板",
+  "version": "0.1.0",
+  "author": "vangelis",
+  "description": "一念插件的官方模板：四个扩展点各一个可跑通的示例",
+  "homepage": "https://github.com/VangelisHaha/yinian-plugin-template",
+  "minHostVersion": "0.5.0",
+  "runtime": {
+    "kind": "process",
+    "node": ">=20",
+    "entry": {
+      "default": "dist/main.mjs"
+    }
+  },
+  "permissions": {
+    "net": [],
+    "spawn": [],
+    "fs": [],
+    "api": []
+  },
+  "contributes": {
+    "sync": {
+      "resources": ["task"],
+      "capabilities": {
+        "actions": ["list", "update", "complete", "reopen", "cancel"],
+        "fields": ["title", "notes", "due_at", "priority"]
+      }
+    },
+    "syncStrategy": {
+      "modes": ["interval", "manual"],
+      "defaultIntervalSeconds": 300,
+      "minIntervalSeconds": 60
+    },
+    "notificationChannel": {
+      "id": "template-log",
+      "name": "模板通知渠道",
+      "supportsActions": false
+    },
+    "hooks": ["task.completed", "task.reopened"],
+    "settingsPanel": ["settings.plugin.json", "settings.integration.json"]
+  },
+  "authMode": ["token"]
+}

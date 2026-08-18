@@ -1,0 +1,49 @@
+{
+  "scope": "plugin",
+  "fields": [
+    {
+      "key": "intro",
+      "type": "note",
+      "label": "说明",
+      "text": "插件级配置对**所有同步实例**共享。凭据这类跟账号绑定的东西应该放实例级。"
+    },
+    {
+      "key": "endpoint",
+      "type": "string",
+      "label": "服务地址",
+      "format": "url",
+      "required": true,
+      "default": "https://example.com/api",
+      "help": "凭据会随请求发出，必须用 https"
+    },
+    {
+      "key": "apiToken",
+      "type": "string",
+      "label": "API Token",
+      "format": "secret",
+      "required": true,
+      "help": "存进加密文件（0600），界面永不回显，日志自动脱敏"
+    },
+    {
+      "key": "testConnection",
+      "type": "action",
+      "label": "测试连接",
+      "rpc": "template.testConnection",
+      "help": "启用之前就能点，宿主会用临时进程跑一次"
+    },
+    {
+      "key": "startAuthorization",
+      "type": "action",
+      "label": "开始授权（device flow 示例）",
+      "rpc": "template.startAuthorization",
+      "help": "返回 openUrl，宿主用系统浏览器打开"
+    },
+    {
+      "key": "verbose",
+      "type": "boolean",
+      "label": "详细日志",
+      "default": false,
+      "help": "打开后写更多 debug 级日志，排查完记得关掉"
+    }
+  ]
+}

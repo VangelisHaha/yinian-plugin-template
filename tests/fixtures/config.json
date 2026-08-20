@@ -1,0 +1,14 @@
+{
+  "good": {
+    "plugin": {
+      "apiToken": "demo-token",
+      "endpoint": "https://example.com/api"
+    }
+  },
+  "bad": {
+    "plugin": {
+      "apiToken": "wrong",
+      "endpoint": "http://example.com"
+    }
+  }
+}

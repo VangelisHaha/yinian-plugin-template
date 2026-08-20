@@ -195,6 +195,31 @@ describe("doctor", () => {
     assert.match(output, /permissions\.spawn 是空的/);
   });
 
+  // 正则的 .exec() 不是起子进程。早先的检测写成 `\b(?:exec|spawn)\s*\(`，
+  // 任何用 `/re/.exec(s)` 解析字符串的插件都会被误判成「执行外部命令」，
+  // 只能靠去掉正则或者假装申请 spawn 权限来绕，两个都不对
+  it("正则的 exec 不算执行外部命令", () => {
+    const dir = stage((dir) => {
+      mkdirSync(join(dir, "src", "extra"), { recursive: true });
+      writeFileSync(
+        join(dir, "src", "extra", "parse.mts"),
+        [
+          "const PATTERN = /^(\\d{4}-\\d{2}-\\d{2})/;",
+          "export function day(value: string) {",
+          "  return PATTERN.exec(value)?.[1] ?? null;",
+          "}",
+          "export function code(value: string) {",
+          "  return /error=([A-Za-z]+)/.exec(value)?.[1] ?? '';",
+          "}",
+          "",
+        ].join("\n"),
+      );
+    });
+    const { code, output } = runDoctor(dir);
+    assert.doesNotMatch(output, /permissions\.spawn 是空的/, output);
+    assert.equal(code, 0, output);
+  });
+
   it("查出未知的 hook topic 与 sync 能力", () => {
     const dir = stage((dir) => {
       patchManifest(dir, (manifest) => {
@@ -208,6 +233,32 @@ describe("doctor", () => {
     assert.match(output, /task\.exploded/);
     assert.match(output, /teleport/);
     assert.match(output, /vibes/);
+  });
+
+  it("查出未知的 sync resource", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.sync.resources = ["task", "meeting"];
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /meeting/);
+  });
+
+  it("纯 event 插件的多余动作与 task 字段只给警告", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        // event 是 pull-only：宿主不会调 push，fields 是 task 字段的门控
+        manifest.contributes.sync.resources = ["event"];
+        manifest.contributes.sync.capabilities.actions = ["list", "complete"];
+        manifest.contributes.sync.capabilities.fields = ["title"];
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 0, `多声明不该挡住发布，只提醒：${output}`);
+    assert.match(output, /pull-only/);
+    assert.match(output, /纯 event 插件留空即可/);
   });
 
   it("声明 sync 但漏了 syncStrategy 要报错", () => {

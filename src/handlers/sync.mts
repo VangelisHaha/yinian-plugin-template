@@ -35,6 +35,20 @@ const REMOTE: ExternalItem[] = [
     priority: "high",
     dueAt: "2026-08-25T10:00:00Z",
     remoteUpdatedAt: "2026-08-18T02:00:00Z",
+    // 给了它，任务详情就有「在 <实例名> 中打开」按钮
+    externalUrl: "https://example.com/items/demo-1",
+    // 你系统独有的字段走这里，宿主原样展示在任务详情的「来源」区。
+    // 值要自己格式化好：宿主不认识你的数据结构，传时间戳用户就只看到时间戳
+    details: [
+      { label: "所属空间", value: "示例空间" },
+      { label: "工作项类型", value: "需求" },
+      { label: "当前节点", value: "中台开发" },
+      {
+        label: "评审文档",
+        value: "https://example.com/docs/demo-1",
+        kind: "link",
+      },
+    ],
     // 未识别的字段放这里，一念会原样存下来
     remoteData: { source: "template", assignee: "someone" },
   },

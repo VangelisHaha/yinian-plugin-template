@@ -73,6 +73,8 @@ const HOOK_TOPICS = new Set([
   "schedule_block.deleted",
 ]);
 
+const SYNC_RESOURCES = new Set(["task", "event"]);
+
 const SYNC_ACTIONS = new Set([
   "list",
   "get",
@@ -213,9 +215,19 @@ function checkContributes(manifest, where) {
 
   if (contributes.sync) {
     const sync = contributes.sync;
-    if (!Array.isArray(sync.resources) || sync.resources.length === 0) {
+    const resources = Array.isArray(sync.resources) ? sync.resources : [];
+    if (resources.length === 0) {
       fail(where, "contributes.sync 需要非空的 resources");
     }
+    for (const resource of resources) {
+      if (!SYNC_RESOURCES.has(resource)) {
+        fail(where, `未知的 sync resource「${resource}」`);
+      }
+    }
+    // 纯 event 插件不会收到 sync.push，也不吃 task 字段门控（一念 docs/11 §5.1.1）
+    const eventOnly =
+      resources.length > 0 && resources.every((item) => item === "event");
+
     const capabilities = sync.capabilities ?? {};
     if (!Array.isArray(capabilities.actions) || capabilities.actions.length === 0) {
       fail(where, "contributes.sync.capabilities.actions 不能为空");
@@ -228,11 +240,26 @@ function checkContributes(manifest, where) {
       if (!capabilities.actions.includes("list")) {
         warn(where, "capabilities.actions 没有 list，宿主无法拉取，只能靠回写");
       }
+      if (eventOnly) {
+        const extra = capabilities.actions.filter((action) => action !== "list");
+        if (extra.length > 0) {
+          warn(
+            where,
+            `event 是 pull-only，「${extra.join("、")}」永远不会被调用，写 ["list"] 就够`,
+          );
+        }
+      }
     }
     for (const field of capabilities.fields ?? []) {
       if (!SYNC_FIELDS.has(field)) {
         fail(where, `未知的 sync field「${field}」`);
       }
+    }
+    if (eventOnly && (capabilities.fields ?? []).length > 0) {
+      warn(
+        where,
+        "capabilities.fields 是 task 字段的门控，纯 event 插件留空即可",
+      );
     }
     if (!contributes.syncStrategy) {
       fail(where, "声明了 sync 就必须声明 syncStrategy");
@@ -505,7 +532,12 @@ function checkPermissionUsage(manifest) {
       what: "发起网络请求（http/https 模块）",
     },
     {
-      pattern: /\b(?:spawn|spawnSync|exec|execFile|execSync)\s*\(/,
+      // 只认 child_process 的调用形态。**不能写成 `\b(?:exec|spawn)\s*\(`**：
+      // 那样 `/正则/.exec(s)` 和 `pattern.exec(s)` 也会中招，任何用正则的插件都会
+      // 被误判成「执行外部命令」。所以要么是裸调用（import 进来的），要么是挂在
+      // child_process / cp 这类模块对象上。
+      pattern:
+        /(?<![.\w$])(?:spawn|spawnSync|execFile|execFileSync|execSync)\s*\(|\b(?:child_process|childProcess|cp)\.(?:spawn|spawnSync|exec|execFile|execSync)\s*\(|(?<![.\w$])exec\s*\(\s*["'`]/,
       declared: declaredSpawn,
       key: "spawn",
       what: "执行外部命令",
@@ -529,7 +561,11 @@ function checkPermissionUsage(manifest) {
   }
   if (
     declaredSpawn &&
-    !sources.some((file) => /\b(?:spawn|exec|execFile)\s*\(/.test(file.text))
+    !sources.some((file) =>
+      /(?<![.\w$])(?:spawn|spawnSync|execFile|execFileSync)\s*\(|\b(?:child_process|childProcess|cp)\.(?:spawn|exec|execFile)\s*\(/.test(
+        file.text,
+      ),
+    )
   ) {
     warn(where, "声明了 spawn 权限但源码里没看到起子进程，考虑去掉");
   }

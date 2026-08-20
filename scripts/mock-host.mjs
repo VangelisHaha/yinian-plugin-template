@@ -152,6 +152,27 @@ function readManifest() {
   return JSON.parse(readFileSync(join(ROOT, "yinian-plugin.json"), "utf8"));
 }
 
+/**
+ * 可选的配置样例：`tests/fixtures/config.json`。
+ *
+ * ```json
+ * {
+ *   "good": { "plugin": { … }, "integration": { … } },
+ *   "bad":  { "integration": { … } }
+ * }
+ * ```
+ *
+ * 为什么不写死在 mock host 里：它不认识你的字段。硬编码一份「坏配置」对不同插件
+ * 根本不成立——公开数据源插件的插件级配置没有可校验的语义，`config.validate`
+ * 恒返回 ok，硬断言就会误报失败。
+ */
+function readConfigFixture() {
+  const path = join(ROOT, "tests", "fixtures", "config.json");
+  if (!existsSync(path)) return { good: {}, bad: {} };
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  return { good: parsed.good ?? {}, bad: parsed.bad ?? {} };
+}
+
 function initParams(manifest, dataDir) {
   const config = {};
   // 从静态 schema 里取 default，模拟「用户什么都没改」的配置
@@ -161,8 +182,8 @@ function initParams(manifest, dataDir) {
       collectDefaults(field, config);
     }
   }
-  // 模板的 config.validate 要求 token 以 demo- 开头
-  config.apiToken = "demo-token";
+  // 插件自己给的合法样例覆盖上去（凭据类字段没有 default，只能从 fixture 来）
+  Object.assign(config, readConfigFixture().good?.plugin ?? {});
 
   return {
     protocolVersion: 1,
@@ -208,62 +229,132 @@ async function main() {
     assert(init?.ok === true, "plugin.init 必须返回 { ok: true }");
     console.log(`✓ plugin.init（插件版本 ${init.pluginVersion ?? "未报"}）`);
 
-    const validated = await host.call("config.validate", {
-      scope: "plugin",
-      config: { apiToken: "demo-token", endpoint: "https://example.com/api" },
-    });
-    assert(validated?.ok === true, `config.validate 未通过：${JSON.stringify(validated)}`);
-    console.log("✓ config.validate");
+    // 配置样例由插件自己给：mock host 不认识你的字段，硬编码一份「坏配置」
+    // 对不同插件根本不成立（比如公开数据源插件的插件级配置没有可校验的语义，
+    // 于是 validate 恒返回 ok，断言就会误报失败）
+    const fixture = readConfigFixture();
 
-    // 故意给一个坏配置，确认校验真的会拦
-    const rejected = await host.call("config.validate", {
-      scope: "plugin",
-      config: { apiToken: "wrong", endpoint: "http://example.com" },
-    });
-    assert(
-      rejected?.ok === false && Array.isArray(rejected.errors) && rejected.errors.length > 0,
-      "坏配置应当被 config.validate 拦住并给出 errors",
-    );
-    assert(
-      rejected.errors.every((item) => typeof item.message === "string"),
-      "每条 error 都要有 message",
-    );
-    console.log(`✓ config.validate 能拦住坏配置（${rejected.errors.length} 处）`);
+    for (const scope of ["plugin", "integration"]) {
+      const good = fixture.good?.[scope];
+      if (!good) continue;
+      const validated = await host.call("config.validate", { scope, config: good });
+      assert(
+        validated?.ok === true,
+        `config.validate(${scope}) 对合法配置未通过：${JSON.stringify(validated)}`,
+      );
+      console.log(`✓ config.validate ${scope}`);
+    }
+
+    const badScopes = Object.keys(fixture.bad ?? {});
+    if (badScopes.length === 0) {
+      console.log(
+        "⊙ 跳过坏配置校验：没有 tests/fixtures/config.json 的 bad 段。" +
+          "有语义校验（凭据能不能调通、格式对不对）的插件建议补上",
+      );
+    }
+    for (const scope of badScopes) {
+      const rejected = await host.call("config.validate", {
+        scope,
+        config: fixture.bad[scope],
+      });
+      assert(
+        rejected?.ok === false &&
+          Array.isArray(rejected.errors) &&
+          rejected.errors.length > 0,
+        `坏配置应当被 config.validate(${scope}) 拦住并给出 errors`,
+      );
+      assert(
+        rejected.errors.every((item) => typeof item.message === "string"),
+        "每条 error 都要有 message",
+      );
+      console.log(
+        `✓ config.validate ${scope} 能拦住坏配置（${rejected.errors.length} 处）`,
+      );
+    }
 
     if (contributes.sync) {
-      const page = await host.call("sync.pull", {
-        integrationId: "mock-integration",
-        traceId: "mock-trace-pull",
-        resource: "task",
-        full: false,
-      });
-      assert(Array.isArray(page?.items), "sync.pull 必须返回 items 数组");
-      assert(typeof page.hasMore === "boolean", "sync.pull 必须返回 hasMore");
-      for (const item of page.items) {
-        assert(
-          typeof item.externalId === "string" && item.externalId,
-          "每个 item 都要有 externalId",
-        );
-        assert(typeof item.title === "string", "每个 item 都要有 title");
-      }
-      console.log(`✓ sync.pull（${page.items.length} 条，hasMore=${page.hasMore}）`);
+      const resources = contributes.sync.resources ?? ["task"];
 
-      const actions = contributes.sync.capabilities?.actions ?? [];
-      if (actions.includes("complete") && page.items[0]) {
-        const outcome = await host.call("sync.push", {
+      if (resources.includes("task")) {
+        const page = await host.call("sync.pull", {
           integrationId: "mock-integration",
-          traceId: "mock-trace-push",
+          traceId: "mock-trace-pull",
           resource: "task",
-          action: "complete",
-          externalId: page.items[0].externalId,
-          item: { ...page.items[0], status: "done" },
-          changedFields: [],
+          full: false,
         });
-        assert(
-          typeof outcome?.applied === "boolean",
-          "sync.push 必须返回 applied",
+        assert(Array.isArray(page?.items), "sync.pull 必须返回 items 数组");
+        assert(typeof page.hasMore === "boolean", "sync.pull 必须返回 hasMore");
+        for (const item of page.items) {
+          assert(
+            typeof item.externalId === "string" && item.externalId,
+            "每个 item 都要有 externalId",
+          );
+          assert(typeof item.title === "string", "每个 item 都要有 title");
+        }
+        console.log(`✓ sync.pull task（${page.items.length} 条，hasMore=${page.hasMore}）`);
+
+        const actions = contributes.sync.capabilities?.actions ?? [];
+        if (actions.includes("complete") && page.items[0]) {
+          const outcome = await host.call("sync.push", {
+            integrationId: "mock-integration",
+            traceId: "mock-trace-push",
+            resource: "task",
+            action: "complete",
+            externalId: page.items[0].externalId,
+            item: { ...page.items[0], status: "done" },
+            changedFields: [],
+          });
+          assert(
+            typeof outcome?.applied === "boolean",
+            "sync.push 必须返回 applied",
+          );
+          console.log(`✓ sync.push complete（applied=${outcome.applied}）`);
+        }
+      }
+
+      // event 是 pull-only，只验拉取形状；宿主永远不会对它调 sync.push
+      if (resources.includes("event")) {
+        const page = await host.call("sync.pull", {
+          integrationId: "mock-integration",
+          traceId: "mock-trace-pull-event",
+          resource: "event",
+          full: false,
+        });
+        assert(typeof page?.hasMore === "boolean", "sync.pull 必须返回 hasMore");
+        const events = page.events ?? [];
+        assert(Array.isArray(events), "event 资源的 sync.pull 必须返回 events 数组");
+        for (const event of events) {
+          assert(
+            typeof event.externalId === "string" && event.externalId,
+            "每个 event 都要有 externalId",
+          );
+          assert(typeof event.title === "string" && event.title.trim(), "每个 event 都要有 title");
+          // 全天与定时互斥，混用的条目宿主会跳过并计入 invalid
+          if (event.allDay) {
+            assert(
+              event.startDate && event.endDate && !event.startAt && !event.endAt,
+              `全天事件 ${event.externalId} 必须只给 startDate/endDate（右开区间）`,
+            );
+            assert(
+              event.endDate > event.startDate,
+              `全天事件 ${event.externalId} 的 endDate 是右开的，必须晚于 startDate`,
+            );
+          } else {
+            assert(
+              event.startAt && event.endAt && !event.startDate && !event.endDate,
+              `定时事件 ${event.externalId} 必须只给 startAt/endAt`,
+            );
+            assert(
+              new Date(event.endAt) > new Date(event.startAt),
+              `定时事件 ${event.externalId} 的 endAt 必须晚于 startAt`,
+            );
+          }
+        }
+        const calendars = page.calendars ?? [];
+        console.log(
+          `✓ sync.pull event（${events.length} 条事件，${calendars.length} 个日历，` +
+            `eventsComplete=${page.eventsComplete === true}）`,
         );
-        console.log(`✓ sync.push complete（applied=${outcome.applied}）`);
       }
     }
 

@@ -14,7 +14,7 @@
  * 用户只能看到一句「配置无效」，不知道该改哪里。
  */
 
-import { logger } from "../sdk/index.mjs";
+import { context, logger } from "../sdk/index.mjs";
 import type {
   ActionResult,
   ConfigValidateRequest,
@@ -56,12 +56,19 @@ export async function validate(
 /**
  * `action` 按钮示例：测试连接。
  *
+ * 宿主会把**设置面板上当前填的**配置放在 `params.config` 里递过来。用它，别用
+ * `context().config`：后者是 `plugin.init` 时那份**已保存**的配置，用户改完凭据
+ * 还没点启用就点这个按钮时，拿到的会是旧值。
+ *
  * **不要在 action 里长轮询**：它只有 15 秒超时，而且启用前的临时进程会被宿主
  * 回收，后台任务活不下来。需要等的事情放到 `config.validate`（30 秒）里。
  */
-export async function testConnection(): Promise<ActionResult> {
+export async function testConnection(params: {
+  config?: Record<string, unknown>;
+}): Promise<ActionResult> {
+  const config = params.config ?? context().config;
   return {
-    message: "连接正常（模板里是假的，换成你的真实请求）",
+    message: `连接正常（模板里是假的，换成你对 ${String(config.endpoint ?? "?")} 的真实请求）`,
   };
 }
 
@@ -69,8 +76,11 @@ export async function testConnection(): Promise<ActionResult> {
  * OAuth device flow 的「开始授权」示例。
  *
  * 插件画不了界面，把授权链接递给用户的唯一方式就是 `openUrl`——宿主会用系统
- * 浏览器打开它。真实实现要把 device_code 存进 `dataDir`，然后在
- * `config.validate` 里轮询换 token。
+ * 浏览器打开它。
+ *
+ * **device_code 必须落 `dataDir`**。启用之前每个 action 都跑在一个用完就回收的
+ * 临时进程里，彼此不共享内存：存模块级变量的话，「检查授权」永远只会说「请先点
+ * 开始授权」。拿到 token 之后记得把它清掉，它是一次性的。
  */
 export async function startAuthorization(): Promise<ActionResult> {
   return {

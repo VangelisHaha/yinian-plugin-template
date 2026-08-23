@@ -30,6 +30,12 @@ describe("协议常量", () => {
     assert.equal(TIMEOUTS["plugin.init"], 30_000);
     assert.equal(TIMEOUTS["sync.pull"], 120_000);
     assert.equal(TIMEOUTS["hook.dispatch"], 30_000);
+    // dayMarks.list 在 UI 路径上（翻一页月视图就等着它），远小于其他调用
+    assert.equal(TIMEOUTS["dayMarks.list"], 8_000);
+    assert.ok(
+      TIMEOUTS["dayMarks.list"] < TIMEOUTS["notify.send"],
+      "日期标记必须比其他扩展点更快超时，否则翻月会卡住",
+    );
     // shutdown 只有 5 秒，超了会被 SIGKILL
     assert.equal(TIMEOUTS["plugin.shutdown"], 5_000);
   });

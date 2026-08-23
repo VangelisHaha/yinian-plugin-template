@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 import { start } from "./sdk/index.mjs";
 import * as config from "./handlers/config.mjs";
+import * as dayMarks from "./handlers/dayMarks.mjs";
 import * as hooks from "./handlers/hooks.mjs";
 import * as notify from "./handlers/notify.mjs";
 import * as sync from "./handlers/sync.mjs";
@@ -46,6 +47,9 @@ start({
 
     // 通知渠道
     "notify.send": notify.send,
+
+    // 日期标记（农历 / 节气 / 节日 / 法定节假日）
+    "dayMarks.list": dayMarks.list,
 
     // 配置
     "config.validate": config.validate,

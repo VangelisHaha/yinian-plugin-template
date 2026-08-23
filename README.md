@@ -1,6 +1,6 @@
 # yinian-plugin-template
 
-[一念（Yinian）](https://github.com/VangelisHaha/nikou-agenda)插件的官方模板。四个扩展点各一个能跑通的示例，外加一个不装一念也能开发的模拟宿主。
+[一念（Yinian）](https://github.com/VangelisHaha/nikou-agenda)插件的官方模板。五个扩展点各一个能跑通的示例，外加一个不装一念也能开发的模拟宿主。
 
 ```bash
 npm install
@@ -34,6 +34,7 @@ src/
     ├── sync.mts            # sync.pull / sync.push
     ├── hooks.mts           # hook.dispatch（含幂等示例）
     ├── notify.mts          # notify.send
+    ├── dayMarks.mts        # dayMarks.list
     └── config.mts          # config.validate + action + optionsFrom
 scripts/
 ├── doctor.mjs              # 契约自检
@@ -54,7 +55,7 @@ dist/main.mjs               # 构建产物，manifest 的 entry 指向它
 
 **唯一的硬规则：stdout 只准写协议帧。** 违反会被记 `PLUGIN_CONTRACT_VIOLATION`。
 
-## 四个扩展点
+## 五个扩展点
 
 ### 同步（`sync.pull` / `sync.push`）
 
@@ -76,6 +77,19 @@ dist/main.mjs               # 构建产物，manifest 的 entry 指向它
 **通知不重试。** 半小时后重投一条「任务即将到期」是噪声不是补救，所以失败就返回 `delivered: false` 加原因，不要自己排重试队列。
 
 只有 manifest 里 `supportsActions: true` 的渠道才会收到 `actions`。
+
+### 日期标记（`dayMarks.list`）
+
+农历、二十四节气、传统与公历节日、法定假日与调休上班。它**不进一念的数据库、永不参与同步**——给定日期就能算出来或查出来。
+
+- **这个调用在 UI 路径上**，超时只有 **8 秒**（其他扩展点是 30–120 秒）：用户翻一页月视图就等着它。**不要在这里发网络请求**，要联网刷数据就在自己的后台节奏里刷、写进 `dataDir`，`list` 只读本地缓存。
+- **失败不重试、不计入断路器。** 标记是装饰性显示，丢一条只是这一屏少个农历，重试只会让翻月卡住。所以宁可返回 `{ marks: [] }`，也不要卡住或抛异常。
+- `date` 必须是**严格** `YYYY-MM-DD`。`2026-8-1` 会被拒——它当 Map key 时和 `2026-08-01` 对不上，界面表现为「有几天没有农历」而且不报错。
+- `label` 要短（**2–3 字**）。那一格宽度只有 100 出头像素，还要和日期数字、休班角标、负载数字挤在同一行，长了会被省略号截掉。长文案放 `detail`。
+- `kind: "holiday"` **必须给 `rest`**（`off` / `work`）。周末也可能是调休上班日，这正是它必须被显示出来的原因。
+- **同一天可以给多条**（清明既是节气又是节日又是假期）。宿主按 `节气 → 节日 → 法定假日 → 农历` 排序、界面只取第一条开关打开的，你不需要自己判优先级。
+- **`coversUntil` 的两种语义**：留空表示「算得出来」（农历、节气任意年份都有）；有值表示「数据只到那天」（放假安排是按年公布的），超出的日子宿主会提示「安排尚未公布」。把「查不到」当成「那天不放假」会让用户照着一张错的日历排期。
+- 同一天同一 kind 有多个来源时，**插件总是覆盖系统插件**——所以你的插件可以替掉一念随包分发的那份节假日数据。
 
 ### 设置面板（`config.validate` + `action`）
 
@@ -101,6 +115,7 @@ dist/main.mjs               # 构建产物，manifest 的 entry 指向它
 | `config.schema` / 自定义方法 | 15s |
 | `sync.pull` / `sync.push` | 120s |
 | `hook.dispatch` / `notify.send` | 30s |
+| `dayMarks.list` | **8s**，且失败不重试（在 UI 路径上） |
 | `plugin.shutdown` | 5s，超了 SIGKILL |
 
 超时即失败，宿主会杀掉当前调用（`sync.*` 会连带重启进程，避免半截状态）。失败按 `1s → 2s → 4s → 8s → 16s` 退避重试，上限 5 次；连续 5 次失败打开断路器，冷却 5 分钟。

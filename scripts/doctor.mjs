@@ -99,6 +99,14 @@ const SYNC_FIELDS = new Set([
 
 const SYNC_MODES = new Set(["interval", "manual", "eventDriven"]);
 
+/** 日期标记类型，契约 §8.3。四个之外的取值宿主直接拒绝安装。 */
+const DAY_MARK_KINDS = new Set([
+  "lunar",
+  "solar_term",
+  "festival",
+  "holiday",
+]);
+
 /** 宿主强制的间隔下限。 */
 const MIN_INTERVAL_FLOOR = 60;
 
@@ -213,6 +221,21 @@ function checkPermissions(manifest, where) {
 function checkContributes(manifest, where) {
   const contributes = manifest.contributes ?? {};
 
+  // 契约 §3.4 的硬约束：什么都不贡献的插件永远不会被调用，装进去也是死的。
+  // `syncStrategy` 与 `settingsPanel` 不算——它们是修饰别的扩展点的，自己不是入口
+  const entryPoints = ["sync", "notificationChannel", "dayMarks", "hooks"];
+  const contributed = entryPoints.filter((key) => {
+    const value = contributes[key];
+    if (Array.isArray(value)) return value.length > 0;
+    return Boolean(value);
+  });
+  if (contributed.length === 0) {
+    fail(
+      where,
+      `contributes 至少要有一个扩展点（${entryPoints.join(" / ")}），否则插件永远不会被调用`,
+    );
+  }
+
   if (contributes.sync) {
     const sync = contributes.sync;
     const resources = Array.isArray(sync.resources) ? sync.resources : [];
@@ -303,6 +326,69 @@ function checkContributes(manifest, where) {
     for (const key of ["id", "name"]) {
       if (typeof channel[key] !== "string" || !channel[key]) {
         fail(where, `notificationChannel 缺少 ${key}`);
+      }
+    }
+  }
+
+  const dayMarks = contributes.dayMarks;
+  if (dayMarks) {
+    const providers = dayMarks.providers;
+    if (!Array.isArray(providers) || providers.length === 0) {
+      fail(where, "contributes.dayMarks 需要非空的 providers");
+    } else {
+      const seen = new Set();
+      for (const provider of providers) {
+        if (!provider || typeof provider !== "object") {
+          fail(where, "dayMarks.providers 的每一项必须是对象");
+          continue;
+        }
+        for (const key of ["id", "name"]) {
+          if (typeof provider[key] !== "string" || !provider[key]) {
+            fail(where, `dayMarks.providers 里有一项缺少 ${key}`);
+          }
+        }
+        // provider id 在插件内必须唯一：宿主对外用 `<pluginId>/<providerId>`，
+        // 撞了之后两个 provider 的标记会互相覆盖，而且不报错
+        if (typeof provider.id === "string" && provider.id) {
+          if (seen.has(provider.id)) {
+            fail(where, `dayMarks.providers 里 id「${provider.id}」重复`);
+          }
+          seen.add(provider.id);
+        }
+        const kinds = provider.kinds;
+        if (!Array.isArray(kinds) || kinds.length === 0) {
+          fail(
+            where,
+            `dayMarks.providers「${provider.id ?? "?"}」需要非空的 kinds`,
+          );
+        } else {
+          for (const kind of kinds) {
+            if (!DAY_MARK_KINDS.has(kind)) {
+              fail(
+                where,
+                `未知的 dayMark kind「${kind}」，合法取值：${[...DAY_MARK_KINDS].join(" / ")}`,
+              );
+            }
+          }
+        }
+        if (
+          provider.coversUntil !== undefined &&
+          !/^\d{4}-\d{2}-\d{2}$/.test(String(provider.coversUntil))
+        ) {
+          fail(
+            where,
+            `dayMarks.providers「${provider.id ?? "?"}」的 coversUntil 必须是 YYYY-MM-DD`,
+          );
+        }
+        if (
+          provider.region !== undefined &&
+          !/^[A-Z]{2}$/.test(String(provider.region))
+        ) {
+          warn(
+            where,
+            `dayMarks.providers「${provider.id ?? "?"}」的 region 应该是 ISO 3166-1 alpha-2（如 CN / JP）`,
+          );
+        }
       }
     }
   }
@@ -475,6 +561,7 @@ function checkHandlersMatchContributes(manifest, registered) {
   }
   if ((contributes.hooks ?? []).length > 0) required.push("hook.dispatch");
   if (contributes.notificationChannel) required.push("notify.send");
+  if (contributes.dayMarks) required.push("dayMarks.list");
 
   for (const method of required) {
     if (!registered.has(method)) {
@@ -497,6 +584,9 @@ function checkHandlersMatchContributes(manifest, registered) {
       where,
       "注册了 notify.send 但没声明 notificationChannel，不会被调用",
     );
+  }
+  if (registered.has("dayMarks.list") && !contributes.dayMarks) {
+    warn(where, "注册了 dayMarks.list 但没声明 contributes.dayMarks，不会被调用");
   }
 }
 

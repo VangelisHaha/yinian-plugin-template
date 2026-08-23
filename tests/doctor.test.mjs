@@ -291,4 +291,77 @@ describe("doctor", () => {
     assert.equal(code, 1);
     assert.match(output, /不是合法 JSON/);
   });
+
+  it("查出未知的 dayMark kind", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.dayMarks.providers[0].kinds = ["zodiac"];
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /未知的 dayMark kind/);
+  });
+
+  it("dayMarks 的 providers 不能为空", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.dayMarks.providers = [];
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /需要非空的 providers/);
+  });
+
+  it("同一插件内 provider id 重复要报错", () => {
+    // 宿主对外用 `<pluginId>/<providerId>`，撞了之后两个 provider 会互相覆盖且不报错
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        const first = manifest.contributes.dayMarks.providers[0];
+        manifest.contributes.dayMarks.providers.push({ ...first });
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /重复/);
+  });
+
+  it("coversUntil 必须是严格日期键", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.dayMarks.providers[0].coversUntil = "2026-8-1";
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /coversUntil 必须是 YYYY-MM-DD/);
+  });
+
+  it("声明 dayMarks 但没注册 dayMarks.list 要报错", () => {
+    const dir = stage((dir) => {
+      const path = join(dir, "src", "main.mts");
+      const source = readText(path).replace(
+        /"dayMarks\.list": dayMarks\.list,/,
+        "",
+      );
+      writeFileSync(path, source);
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /dayMarks\.list/);
+  });
+
+  it("什么扩展点都不贡献要报错", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes = {
+          settingsPanel: ["settings.plugin.json", "settings.integration.json"],
+        };
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /至少要有一个扩展点/);
+  });
 });

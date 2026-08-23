@@ -5,7 +5,8 @@
  * 按真实宿主的方式起插件子进程并走一遍完整生命周期，让你**不装一念也能开发**：
  *
  *   plugin.init → config.validate → sync.pull → sync.push
- *   → hook.dispatch（含一次重复投递，验证幂等）→ notify.send → plugin.shutdown
+ *   → hook.dispatch（含一次重复投递，验证幂等）→ notify.send → dayMarks.list
+ *   → plugin.shutdown
  *
  * 它同时在做四件真实宿主也会做的事，所以能提前暴露契约问题：
  *
@@ -38,6 +39,7 @@ const TIMEOUTS = {
   "sync.push": 120_000,
   "hook.dispatch": 30_000,
   "notify.send": 30_000,
+  "dayMarks.list": 8_000,
   "plugin.shutdown": 5_000,
 };
 const DEFAULT_TIMEOUT = 15_000;
@@ -395,6 +397,53 @@ async function main() {
         "notify.send 必须返回 delivered",
       );
       console.log(`✓ notify.send（delivered=${outcome.delivered}）`);
+    }
+
+    if (contributes.dayMarks) {
+      const providers = contributes.dayMarks.providers ?? [];
+      for (const provider of providers) {
+        // 42 天，正好是月视图一屏的格子数
+        const page = await host.call("dayMarks.list", {
+          providerId: provider.id,
+          from: "2026-09-28",
+          to: "2026-11-08",
+        });
+        assert(
+          Array.isArray(page?.marks),
+          "dayMarks.list 必须返回 marks 数组（允许为空）",
+        );
+        for (const mark of page.marks) {
+          // 严格日期键：宽松格式当 Map key 时对不上，界面表现为「有几天没有农历」且不报错
+          assert(
+            /^\d{4}-\d{2}-\d{2}$/.test(mark?.date ?? ""),
+            `dayMarks.list 的 date 必须是严格 YYYY-MM-DD，收到「${mark?.date}」`,
+          );
+          assert(
+            ["lunar", "solar_term", "festival", "holiday"].includes(mark?.kind),
+            `dayMarks.list 的 kind 不合法：「${mark?.kind}」`,
+          );
+          assert(
+            typeof mark?.label === "string" && mark.label.length > 0,
+            "dayMarks.list 的 label 不能为空",
+          );
+          // 契约 §8.3：holiday 必须给 rest，否则界面分不出放假和调休上班
+          if (mark.kind === "holiday") {
+            assert(
+              mark.rest === "off" || mark.rest === "work",
+              `kind: "holiday" 必须给 rest（off / work），收到「${mark.rest}」`,
+            );
+          }
+          if (mark.label.length > 4) {
+            console.warn(
+              `[warn] dayMarks.list 的 label「${mark.label}」超过 4 字，` +
+                `月视图格子里会被省略号截掉`,
+            );
+          }
+        }
+        console.log(
+          `✓ dayMarks.list（${provider.id}，${page.marks.length} 条标记）`,
+        );
+      }
     }
 
     // action 与 optionsFrom 指向的自定义方法

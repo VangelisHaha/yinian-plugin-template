@@ -19,7 +19,9 @@
 
 `src/sdk/` 只是契约的一个 TypeScript 实现。**契约变了要先改文档，再同步这里**，反过来不行。SDK 当前对应 `PROTOCOL_VERSION = 1`。
 
-同步范围包括：`protocol.mts` 的超时表与方法名规则、`types.mts` 的 DTO 字段、`doctor.mjs` 里那几张枚举白名单（hook topic、sync action / field、调度模式、字段类型）、`mock-host.mjs` 的超时表。这几处任何一处漏改，doctor 就会给出与宿主不一致的判断——那比不检查更糟。
+同步范围包括：`protocol.mts` 的超时表与方法名规则、`types.mts` 的 DTO 字段、`doctor.mjs` 里那几张枚举白名单（hook topic、sync action / field、调度模式、字段类型、**dayMark kind**）、`mock-host.mjs` 的超时表**与生命周期段落**。这几处任何一处漏改，doctor 就会给出与宿主不一致的判断——那比不检查更糟。
+
+`mock-host.mjs` 不只是超时表要同步：新增扩展点时要给它加一段真实调用并校验返回值形状，否则插件作者本地跑 `npm run mock` 看不到那条链路，只能装进一念才发现问题。
 
 ## SDK 的设计约束
 

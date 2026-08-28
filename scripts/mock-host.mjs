@@ -387,9 +387,24 @@ async function main() {
         traceId: "mock-trace-notify",
         notification: {
           id: "mock-notification-1",
-          kind: "task_due",
-          title: "模拟通知",
-          body: "来自 mock host",
+          kind: "schedule_start",
+          title: "模拟通知 · 中台开发",
+          body: "排期开始：15 分钟后",
+          entity: { type: "schedule_block", id: "mock-block-1" },
+          // 富消息渠道要靠它排版。fields 的值是宿主格式化好的，直接印，
+          // 不要再解析（契约 §8.2）
+          detail: {
+            subject: "模拟通知",
+            label: "中台开发",
+            priority: "high",
+            overdue: false,
+            deepLink: "yinian://open/task/mock-task-1",
+            fields: [
+              { label: "排期", value: "08-28 14:00–16:00" },
+              { label: "任务截止", value: "08-30 18:00" },
+              { label: "优先级", value: "高" },
+            ],
+          },
         },
       });
       assert(

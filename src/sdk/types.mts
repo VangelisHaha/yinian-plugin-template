@@ -380,6 +380,42 @@ export interface NotificationAction {
   label: string;
 }
 
+/** 明细里的一行。`value` 是宿主**已经格式化好的**字符串，直接印。 */
+export interface NotificationField {
+  label: string;
+  value: string;
+}
+
+/**
+ * 给富消息渠道的明细（契约 §8.2）。
+ *
+ * `title` / `body` 是为系统通知栏那两行字准备的；飞书卡片、企微图文有更大的版面，
+ * 只印这两行等于浪费掉。
+ *
+ * **`fields` 的值不要再解析。** 时区转换、全天右开区间、跨天段、只到日期的截止，
+ * 宿主已经按本机时区处理好了；渠道自己算一遍必然会写歪，而写歪的表现是用户收到
+ * 一个错的时间且毫无提示。要做视觉强调用 `priority` 与 `overdue`。
+ *
+ * `kind: "custom"`（比如设置页的测试通知）没有宿主实体，**不会带 detail**。
+ */
+export interface NotificationDetail {
+  /** 事项本体标题，不含段名。`Notification.title` 是 `subject · label` 的合成结果。 */
+  subject: string;
+  /** 排期块的段名（「中台开发」），其余类型没有。 */
+  label?: string;
+  /** 只有 Task 与排期块有。事件是 `undefined`，不是 `"none"`。 */
+  priority?: "none" | "low" | "medium" | "high";
+  /** 锚点是否已经过去。 */
+  overdue?: boolean;
+  /**
+   * `yinian://open/{task|event}/{id}`，唤起一念并打开该事项。
+   *
+   * **由宿主生成，不要自己拼 scheme。** 排期块给的是所属任务的链接（§8.2.1）。
+   */
+  deepLink?: string;
+  fields?: NotificationField[];
+}
+
 export interface Notification {
   id: string;
   kind: NotificationKind;
@@ -388,6 +424,8 @@ export interface Notification {
   entity?: EntityRef;
   /** 只有 manifest 里声明了 `supportsActions` 的渠道才会收到。 */
   actions?: NotificationAction[];
+  /** 富消息渠道用的明细。系统通知栏那种渠道可以完全忽略它。 */
+  detail?: NotificationDetail;
 }
 
 export interface NotifyRequest {

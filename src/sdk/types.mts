@@ -620,3 +620,119 @@ export interface ActionResult {
 export interface OptionsResult {
   options: SettingsFieldOption[];
 }
+
+// ─── 多端同步传输（replica，契约 §5.4）──────────────────────────────────────
+//
+// **replica 与 sync 是两个不同的扩展点，不要混。** sync 接的是外部系统（飞书、
+// Apple 日历），插件要理解对方的模型、产出 `ExternalItem`；replica 接的是**同一份
+// 数据的另一个副本**，插件**只搬运加密字节**，一个业务判断都不做。
+//
+// 两者语义在关键处正好相反：sync 遇到远端删除要保留本地，replica 必须真删。所以
+// manifest 里互斥，一个插件只能选一边。
+//
+// 五条硬约束（契约 §5.4.2，违反了宿主会判错或数据对不上）：
+//
+// 1. **`bytes` 是 base64。** 行分隔 JSON 放不了裸二进制。`maxObjectBytes` 说的是
+//    **解码后**的大小。
+// 2. **不得解释 `bytes`，也解释不了**——它是 XChaCha20-Poly1305 密文。日志里别打它。
+// 3. **`key` 由宿主生成**，不含业务语义。插件不得改写、加前缀或重排目录，否则换设备
+//    后对不上。要把数据放进自己的命名空间，用配置里的 database / 路径，别动 key。
+// 4. **`missing: true` 不是错误。** 对象被别的设备压实掉了是正常情况，返回 RPC 错误
+//    会白白触发退避与断路器。
+// 5. **`put` 必须幂等。** 同一个 key 重复写入同样的内容不算失败——网络重试会真的
+//    发生，而 journal 分片内容是不变的。
+
+/** `replica.put` 的一个待上传对象。 */
+export interface ReplicaPutObject {
+  key: string;
+  /** base64 编码的密文。 */
+  bytes: string;
+}
+
+export interface ReplicaPutParams {
+  profileId: string;
+  traceId?: string;
+  objects: ReplicaPutObject[];
+  config?: Record<string, unknown>;
+}
+
+export interface ReplicaPutResult {
+  /** 成功写入的 key。 */
+  written: string[];
+}
+
+export interface ReplicaGetParams {
+  profileId: string;
+  traceId?: string;
+  keys: string[];
+  config?: Record<string, unknown>;
+}
+
+/** 下载结果的一项。`missing: true` 时 `bytes` 省略，**这不是错误**。 */
+export interface ReplicaFetchedObject {
+  key: string;
+  bytes?: string;
+  missing?: boolean;
+}
+
+export interface ReplicaGetResult {
+  objects: ReplicaFetchedObject[];
+}
+
+export interface ReplicaListParams {
+  profileId: string;
+  traceId?: string;
+  prefix: string;
+  /** 上次返回的游标，增量列举。首次为空。 */
+  since?: string;
+  limit: number;
+  config?: Record<string, unknown>;
+}
+
+export interface ReplicaObjectMeta {
+  key: string;
+  /** 解码后字节数。 */
+  size: number;
+}
+
+export interface ReplicaListResult {
+  objects: ReplicaObjectMeta[];
+  /** 下次 `list` 传回的游标。 */
+  cursor?: string;
+  hasMore?: boolean;
+}
+
+export interface ReplicaDeleteParams {
+  profileId: string;
+  traceId?: string;
+  keys: string[];
+  config?: Record<string, unknown>;
+}
+
+export interface ReplicaDeleteResult {
+  deleted: string[];
+}
+
+export interface ReplicaWatchParams {
+  profileId: string;
+  traceId?: string;
+  since?: string;
+  config?: Record<string, unknown>;
+}
+
+/**
+ * `replica.watch` 的应答。**必须立即返回**，不要在里面等第一条变更。
+ *
+ * 宿主是「串行请求-响应 + 超时杀进程」（契约 §4.5），挂在 watch 里等 60 秒的
+ * longpoll 会被当成超时杀掉然后无限重启。返回之后在自己的循环里等变更，用
+ * `replica.changed` 通知上报，并每 `heartbeatSeconds` 至少发一次 `replica.heartbeat`
+ * （没有变更时也要发）——宿主按 3 个心跳周期判活。
+ */
+export interface ReplicaWatchResult {
+  watching: boolean;
+  heartbeatSeconds?: number;
+}
+
+export interface ReplicaUnwatchResult {
+  watching: false;
+}

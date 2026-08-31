@@ -223,7 +223,13 @@ function checkContributes(manifest, where) {
 
   // 契约 §3.4 的硬约束：什么都不贡献的插件永远不会被调用，装进去也是死的。
   // `syncStrategy` 与 `settingsPanel` 不算——它们是修饰别的扩展点的，自己不是入口
-  const entryPoints = ["sync", "notificationChannel", "dayMarks", "hooks"];
+  const entryPoints = [
+    "sync",
+    "replica",
+    "notificationChannel",
+    "dayMarks",
+    "hooks",
+  ];
   const contributed = entryPoints.filter((key) => {
     const value = contributes[key];
     if (Array.isArray(value)) return value.length > 0;
@@ -312,6 +318,51 @@ function checkContributes(manifest, where) {
         `minIntervalSeconds=${strategy.minIntervalSeconds} 低于宿主硬下限 ` +
           `${MIN_INTERVAL_FLOOR}，会被抬到 ${MIN_INTERVAL_FLOOR}`,
       );
+    }
+  }
+
+  // 多端同步传输（契约 §5.4）。**与 sync 互斥**：sync 接外部系统、replica 搬同步
+  // 字节，两者在「远端删除了怎么办」上语义正好相反（sync 保留本地、replica 必须真删），
+  // 混在一个插件里会让用户分不清它在同步什么，设置面板语义也完全不同。
+  if (contributes.replica) {
+    const replica = contributes.replica;
+    if (contributes.sync) {
+      fail(
+        where,
+        "contributes.sync 与 contributes.replica 不能同时声明：前者接外部系统、后者搬同步字节，语义相反",
+      );
+    }
+    if (contributes.syncStrategy) {
+      warn(
+        where,
+        "replica 不需要 syncStrategy：多端同步的调度由一念核心掌握，与 interval / manual 无关",
+      );
+    }
+    for (const key of ["id", "name"]) {
+      if (typeof replica[key] !== "string" || !replica[key].trim()) {
+        fail(where, `contributes.replica 缺少 ${key}`);
+      }
+    }
+    const capabilities = replica.capabilities ?? {};
+    for (const key of ["watch", "delete"]) {
+      if (key in capabilities && typeof capabilities[key] !== "boolean") {
+        fail(where, `contributes.replica.capabilities.${key} 必须是 boolean`);
+      }
+    }
+    if (capabilities.delete === false || capabilities.delete === undefined) {
+      warn(
+        where,
+        "capabilities.delete 不为 true 时压实不可用，远端日志只增不减——界面上会如实提示用户",
+      );
+    }
+    if ("maxObjectBytes" in capabilities) {
+      const max = capabilities.maxObjectBytes;
+      if (typeof max !== "number" || !Number.isFinite(max) || max <= 0) {
+        fail(
+          where,
+          "contributes.replica.capabilities.maxObjectBytes 必须是正数（解码后字节）",
+        );
+      }
     }
   }
 

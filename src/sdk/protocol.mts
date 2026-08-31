@@ -40,11 +40,18 @@ export interface RpcNotification {
   params: unknown;
 }
 
-/** 插件可以主动发的三个通知。**不得主动发带 `id` 的请求帧。** */
+/**
+ * 插件可以主动发的通知。**不得主动发带 `id` 的请求帧。**
+ *
+ * 前三个是所有插件通用；后两个只有 `contributes.replica` 且 `capabilities.watch = true`
+ * 的插件会用到（契约 §5.4.4）。
+ */
 export type HostNotificationMethod =
   | "host.log"
   | "host.progress"
-  | "host.setState";
+  | "host.setState"
+  | "replica.changed"
+  | "replica.heartbeat";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -140,6 +147,18 @@ export const TIMEOUTS: Readonly<Record<string, number>> = Object.freeze({
    * 重试只会让翻月卡住。
    */
   "dayMarks.list": 8_000,
+  /**
+   * 多端同步传输（契约 §5.4.5）。put/get 搬字节给得宽，list/delete 是元数据操作。
+   *
+   * **watch/unwatch 只有 10 秒**：它们只是开关订阅、不做 I/O 等待。返回之后的静默期
+   * 宿主**不计时**，改用 `replica.heartbeat` 判活——这是它与所有其他 RPC 的唯一区别。
+   */
+  "replica.put": 60_000,
+  "replica.get": 60_000,
+  "replica.list": 30_000,
+  "replica.delete": 30_000,
+  "replica.watch": 10_000,
+  "replica.unwatch": 10_000,
   "plugin.shutdown": 5_000,
   /** 自定义方法（含 action 与 optionsFrom）。 */
   custom: 15_000,
@@ -152,6 +171,12 @@ export const TIMEOUTS: Readonly<Record<string, number>> = Object.freeze({
  */
 export const CUSTOM_METHOD_PATTERN = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/;
 
+/**
+ * 宿主保留的方法前缀，与宿主 `plugin/protocol.rs` 的 `RESERVED_PREFIXES` 一一对应。
+ *
+ * 少一个的后果是：doctor 放行了一个自定义方法名，装进宿主却被判违规——报错发生在
+ * 用户那边而不是开发期。
+ */
 export const RESERVED_METHOD_PREFIXES = [
   "plugin.",
   "config.",
@@ -159,6 +184,8 @@ export const RESERVED_METHOD_PREFIXES = [
   "notify.",
   "hook.",
   "host.",
+  "dayMarks.",
+  "replica.",
 ] as const;
 
 export function isValidCustomMethod(method: string): boolean {

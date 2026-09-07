@@ -21,8 +21,8 @@
       "type": "string",
       "label": "API Token",
       "format": "secret",
-      "required": true,
-      "help": "存进加密文件（0600），界面永不回显，日志自动脱敏"
+      "required": false,
+      "help": "演示不需要凭据；测试校验时可填 demo- 开头的假 token，不要填真实密钥"
     },
     {
       "key": "testConnection",

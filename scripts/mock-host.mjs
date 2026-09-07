@@ -35,6 +35,8 @@ const TIMEOUTS = {
   "plugin.init": 30_000,
   "config.validate": 30_000,
   "config.schema": 15_000,
+  "tools.list": 15_000,
+  "tools.call": 120_000,
   "sync.pull": 120_000,
   "sync.push": 120_000,
   "hook.dispatch": 30_000,
@@ -217,10 +219,7 @@ async function main() {
     manifest.runtime?.entry?.[process.platform] ??
     manifest.runtime?.entry?.default;
   assert(entry, "manifest 里没有可用的 runtime.entry");
-  assert(
-    existsSync(join(ROOT, entry)),
-    `${entry} 不存在，先跑 npm run build`,
-  );
+  assert(existsSync(join(ROOT, entry)), `${entry} 不存在，先跑 npm run build`);
 
   const dataDir = mkdtempSync(join(tmpdir(), "yinian-plugin-mock-"));
   const host = new MockHost(join(ROOT, entry));
@@ -239,7 +238,10 @@ async function main() {
     for (const scope of ["plugin", "integration"]) {
       const good = fixture.good?.[scope];
       if (!good) continue;
-      const validated = await host.call("config.validate", { scope, config: good });
+      const validated = await host.call("config.validate", {
+        scope,
+        config: good,
+      });
       assert(
         validated?.ok === true,
         `config.validate(${scope}) 对合法配置未通过：${JSON.stringify(validated)}`,
@@ -293,7 +295,9 @@ async function main() {
           );
           assert(typeof item.title === "string", "每个 item 都要有 title");
         }
-        console.log(`✓ sync.pull task（${page.items.length} 条，hasMore=${page.hasMore}）`);
+        console.log(
+          `✓ sync.pull task（${page.items.length} 条，hasMore=${page.hasMore}）`,
+        );
 
         const actions = contributes.sync.capabilities?.actions ?? [];
         if (actions.includes("complete") && page.items[0]) {
@@ -322,19 +326,31 @@ async function main() {
           resource: "event",
           full: false,
         });
-        assert(typeof page?.hasMore === "boolean", "sync.pull 必须返回 hasMore");
+        assert(
+          typeof page?.hasMore === "boolean",
+          "sync.pull 必须返回 hasMore",
+        );
         const events = page.events ?? [];
-        assert(Array.isArray(events), "event 资源的 sync.pull 必须返回 events 数组");
+        assert(
+          Array.isArray(events),
+          "event 资源的 sync.pull 必须返回 events 数组",
+        );
         for (const event of events) {
           assert(
             typeof event.externalId === "string" && event.externalId,
             "每个 event 都要有 externalId",
           );
-          assert(typeof event.title === "string" && event.title.trim(), "每个 event 都要有 title");
+          assert(
+            typeof event.title === "string" && event.title.trim(),
+            "每个 event 都要有 title",
+          );
           // 全天与定时互斥，混用的条目宿主会跳过并计入 invalid
           if (event.allDay) {
             assert(
-              event.startDate && event.endDate && !event.startAt && !event.endAt,
+              event.startDate &&
+                event.endDate &&
+                !event.startAt &&
+                !event.endAt,
               `全天事件 ${event.externalId} 必须只给 startDate/endDate（右开区间）`,
             );
             assert(
@@ -343,7 +359,10 @@ async function main() {
             );
           } else {
             assert(
-              event.startAt && event.endAt && !event.startDate && !event.endDate,
+              event.startAt &&
+                event.endAt &&
+                !event.startDate &&
+                !event.endDate,
               `定时事件 ${event.externalId} 必须只给 startAt/endAt`,
             );
             assert(
@@ -375,10 +394,7 @@ async function main() {
 
       // 同一条再投一次：投递保证是「至少一次」，插件必须幂等
       const again = await host.call("hook.dispatch", event);
-      assert(
-        again?.ok === true,
-        "重复投递也要返回 ok，报错只会让宿主白白重试",
-      );
+      assert(again?.ok === true, "重复投递也要返回 ok，报错只会让宿主白白重试");
       console.log("✓ hook.dispatch（含重复投递，幂等）");
     }
 
@@ -474,6 +490,55 @@ async function main() {
       }
     }
 
+    if (contributes.agentTools) {
+      const directory = await host.call("tools.list", {
+        integrationId: "demo-instance",
+        config: {},
+      });
+      assert(Array.isArray(directory.tools), "tools.list 必须返回 tools");
+      const read = await host.call("tools.call", {
+        name: "list_schedule",
+        arguments: {},
+        integrationId: "demo-instance",
+        config: {},
+      });
+      assert(
+        read.structuredContent.rows.length === 1,
+        "只读工具必须返回模拟排期",
+      );
+      const request = {
+        name: "create_task",
+        arguments: { item: { title: "演示任务" } },
+        integrationId: "demo-instance",
+        config: {},
+        operationId: "mock-create-task",
+      };
+      const first = await host.call("tools.call", request);
+      const again = await host.call("tools.call", request);
+      assert(
+        JSON.stringify(first) === JSON.stringify(again),
+        "重复写入必须返回同一回执",
+      );
+      assert(first.binding.resource === "task", "绑定工具必须返回标准任务关联");
+      let rejected = false;
+      try {
+        await host.call("tools.call", { ...request, operationId: null });
+      } catch {
+        rejected = true;
+      }
+      assert(rejected, "未提供 operationId 的写入必须拒绝");
+      rejected = false;
+      try {
+        await host.call("tools.call", {
+          ...request,
+          arguments: { item: { title: "" } },
+        });
+      } catch {
+        rejected = true;
+      }
+      assert(rejected, "不合法参数必须拒绝");
+      console.log("✓ agentTools 发现、读取、确认写入、幂等与错误返回");
+    }
     const shutdown = await host.call("plugin.shutdown", {});
     assert(shutdown?.ok === true, "plugin.shutdown 必须返回 { ok: true }");
     console.log("✓ plugin.shutdown");
@@ -499,7 +564,10 @@ function collectCustomMethods(fields) {
     if (field.type === "action" && typeof field.rpc === "string") {
       methods.add(field.rpc);
     }
-    if (typeof field.optionsFrom === "string" && field.optionsFrom.startsWith("rpc:")) {
+    if (
+      typeof field.optionsFrom === "string" &&
+      field.optionsFrom.startsWith("rpc:")
+    ) {
       methods.add(field.optionsFrom.slice(4));
     }
   }

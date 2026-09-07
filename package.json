@@ -1,6 +1,6 @@
 {
   "name": "yinian-plugin-template",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "一念（Yinian）插件官方模板：薄 SDK + mock host + 契约自检",
   "type": "module",
   "private": true,
@@ -13,7 +13,8 @@
     "doctor": "node scripts/doctor.mjs",
     "mock": "npm run build && node scripts/mock-host.mjs",
     "test": "npm run build && node --test \"tests/**/*.test.mjs\"",
-    "verify": "npm run build && npm run doctor && node --test \"tests/**/*.test.mjs\""
+    "verify": "npm run build && npm run doctor && node --test \"tests/**/*.test.mjs\" && node scripts/mock-host.mjs",
+    "pack:zip": "npm run build && node scripts/pack.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

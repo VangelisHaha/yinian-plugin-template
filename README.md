@@ -1,6 +1,6 @@
 # yinian-plugin-template
 
-[一念（Yinian）](https://github.com/VangelisHaha/nikou-agenda)插件的官方模板。六个扩展点各一个能跑通的示例，外加一个不装一念也能开发的模拟宿主。
+[一念（Yinian）](https://github.com/VangelisHaha/nikou-agenda)插件的官方模板。七个扩展点各一个能跑通的示例，外加一个不装一念也能开发的模拟宿主。
 
 ```bash
 npm install
@@ -55,7 +55,7 @@ dist/main.mjs               # 构建产物，manifest 的 entry 指向它
 
 **唯一的硬规则：stdout 只准写协议帧。** 违反会被记 `PLUGIN_CONTRACT_VIOLATION`。
 
-## 六个扩展点
+## 七个扩展点
 
 ### 同步（`sync.pull` / `sync.push`）
 
@@ -184,3 +184,63 @@ npm run mock -- --verbose   # 打印每一帧收发
 ## 契约
 
 完整契约在一念仓库的 [`docs/11-plugin-architecture.md`](https://github.com/VangelisHaha/nikou-agenda/blob/main/docs/11-plugin-architecture.md)，**那是 source of truth**。本模板的 SDK 对应 `PROTOCOL_VERSION = 1`，与文档不一致时以文档为准。
+
+## AI 工具：自定义插件接入指南
+
+`agentTools` 是通用扩展点。一念只根据声明发现和调用工具，不需要在宿主登记插件名称。
+协议借鉴 MCP 的工具描述与结果，复用一念 JSON-RPC，不是完整 MCP Server。
+工具只供一念 AI 对话面板使用；表单 Tab、外部 Agent HTTP API 和 CLI 不会调用。
+
+### 从 Demo 到自己的工具
+
+1. 在 manifest 加 `contributes.agentTools: { "scope": "plugin" }`；需要同步实例配置或绑定
+   本地 Task/Event 时使用 `integration`。仅提供工具时可以移除其他扩展点，最低宿主版本为 0.13.0。
+2. 参考 `src/handlers/tools.mts`，定义 `ToolDefinition`，填名称、中文说明、读写类型和参数
+   Schema；字段填 `title`，确认卡会按它显示中文名称。定义中的 `execute` 实现自己的 API。
+3. 用 `toolHandlers(definitions)` 注册到 `start({ handlers: { ...tools } })`。目录和调用共用
+   一份定义，SDK 自动处理 `tools.list`、名称查找、参数校验与结果大小校验。
+4. 从 request.config 取宿主合并的配置，从 request.integrationId 取目标实例；凭据不放进
+   arguments、工具说明、日志和返回值。不要自己读取一念数据库。
+5. 执行 `npm run verify`，再执行 `npm run mock -- --verbose` 查看帧交互。安装打好的 zip 后，
+   启用插件和所需实例，在一念 AI 面板输入需求进行验收。Agent 设置可以单独关闭插件的 AI 使用。
+
+### 三类工具
+
+| 类型 | Demo | 宿主行为 |
+|---|---|---|
+| 只读 | `list_schedule` | 直接调用，真实结果回喂给模型 |
+| 仅外部写入 | `create_note` | 展示参数，用户确认后执行；不创建本地实体 |
+| 本地创建并同步 | `create_task` / `create_event` | 确认后先保存本地事项，再执行插件并关联远端身份 |
+
+示例全用假数据，外部备忘与创建回执保存在插件自己的 dataDir，不需要真实账号。
+实现邮件排期时，可先提供 `search_mail_schedule` 只读工具；需要创建日程时再提供声明
+`binding: "event"` 的写工具，复用 `eventItemSchema` 和标准 `ExternalEvent` / `ExternalCalendar` 返回值。
+一念核心不需要为邮件插件再加分支。
+
+### 参数与结果
+
+- 使用 `ToolSchema` 的明确子集：object/array/string/number/integer/boolean/null、properties、
+  required、additionalProperties、items、enum、数值与长度上下限、title/description。
+  根为 object，最多 8 层，不支持 $ref/组合；不支持的关键字直接拒绝。
+- `textResult(给人看的说明, 结构化数据)` 生成标准返回值。业务失败返回 `isError: true`，
+  不要用空数组伪装失败。网络结果不明应抛错，让宿主显示“远端结果待核对”。
+- 目录最多 32 个工具；工具结果最大 64 KiB。大列表提供 limit/offset 或游标；返回来源与
+  查询时间。不要返回整个远端账号或全量原始响应。
+- 目录调用超时 15 秒，工具调用 120 秒，一轮最多 8 次。每个 execute 必须有网络超时，
+  超时不能吞掉。工具结果只是数据，不能要求模型忽略用户指令。
+- binding 工具的 `arguments.item` 为本地创建内容，远端目标放在外层参数；Event 的本地
+  calendarId 由宿主选择。成功返回标准 binding，保留远端稳定 ID，不能用标题当身份。
+
+### 写入、幂等与恢复
+
+用户的确认由一念持有，写调用携带 operationId；SDK 拒绝缺少该字段的写调用。
+`withToolReceipt` 持久化成功回执，重启后相同操作直接返回回执，换参数则拒绝。
+**它不能单独保证网络调用幂等**：如果远端成功但响应丢失，execute 必须用服务端幂等键、
+稳定资源地址或先查询再恢复。只有满足这点才声明 `idempotent: true`。
+不保证幂等的写入遇到不确定结果时，宿主会停止直接重试，要求核对远端。
+
+本地写入成功、远端失败时本地事项保留；再次尝试只执行远端步骤。已经取得回执时只恢复
+关联，不再创建远端数据。配置、工具声明或待同步事项变化后，旧草案不能继续提交。
+
+运行 Demo 不需要真实凭据：API Token 留空，服务地址保持默认，实例选择模拟项目即可。
+工具的模拟数据只写插件 dataDir；请勿把真实账号密钥填入 Demo。

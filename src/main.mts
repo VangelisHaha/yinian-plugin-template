@@ -1,3 +1,4 @@
+import { handlers as tools } from "./handlers/tools.mjs";
 /**
  * 插件入口。
  *
@@ -39,6 +40,7 @@ start({
   },
 
   handlers: {
+    ...tools,
     // 同步
     "sync.pull": sync.pull,
     "sync.push": sync.push,

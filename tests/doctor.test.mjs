@@ -285,7 +285,7 @@ describe("doctor", () => {
 
   it("坏 JSON 直接报出来", () => {
     const dir = stage((dir) => {
-      writeFileSync(join(dir, "yinian-plugin.json"), "{ \"id\": }");
+      writeFileSync(join(dir, "yinian-plugin.json"), '{ "id": }');
     });
     const { code, output } = runDoctor(dir);
     assert.equal(code, 1);
@@ -442,4 +442,38 @@ describe("doctor", () => {
     assert.equal(code, 1);
     assert.match(output, /至少要有一个扩展点/);
   });
+});
+
+it("纯工具插件使用任意 ID 可运行发现，无需 sync", () => {
+  const dir = stage((dir) => {
+    patchManifest(dir, (m) => {
+      m.id = "custom-research-kit";
+      m.contributes = { agentTools: { scope: "plugin" } };
+      m.runtime.entry = { default: "dist/only-tools.mjs" };
+    });
+    writeFileSync(
+      join(dir, "dist/only-tools.mjs"),
+      `import {start,toolHandlers,textResult} from './sdk/index.mjs'; start({version:'0.2.0',handlers:toolHandlers([{name:'research',title:'资料查询',description:'任意 ID 示例',effect:'read',inputSchema:{type:'object'},execute:()=>textResult('模拟资料')}])});`,
+    );
+  });
+  const result = runDoctor(dir);
+  assert.equal(result.code, 0, result.output);
+});
+it("拒绝非法工具 scope 和目录 Schema", () => {
+  const invalid = stage((dir) =>
+    patchManifest(dir, (m) => {
+      m.contributes.agentTools.scope = "public";
+    }),
+  );
+  assert.equal(runDoctor(invalid).code, 1);
+  const bad = stage((dir) => {
+    patchManifest(dir, (m) => {
+      m.runtime.entry = { default: "dist/bad-tools.mjs" };
+    });
+    writeFileSync(
+      join(dir, "dist/bad-tools.mjs"),
+      `import {start} from './sdk/index.mjs';start({version:'0.2.0',handlers:{'tools.list':()=>({tools:[{name:'bad',title:'坏工具',description:'例子',effect:'read',inputSchema:{type:'object',$ref:'bad'}}]})}});`,
+    );
+  });
+  assert.equal(runDoctor(bad).code, 1);
 });

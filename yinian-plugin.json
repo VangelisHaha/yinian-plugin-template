@@ -2,11 +2,11 @@
   "manifestVersion": 1,
   "id": "yinian-plugin-template",
   "name": "插件模板",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "vangelis",
-  "description": "一念插件的官方模板：六个扩展点各一个可跑通的示例",
+  "description": "一念插件官方模板：通用 AI 工具与各扩展点的可运行示例",
   "homepage": "https://github.com/VangelisHaha/yinian-plugin-template",
-  "minHostVersion": "0.12.33",
+  "minHostVersion": "0.13.0",
   "runtime": {
     "kind": "process",
     "node": ">=20",
@@ -22,14 +22,30 @@
   },
   "contributes": {
     "sync": {
-      "resources": ["task"],
+      "resources": [
+        "task"
+      ],
       "capabilities": {
-        "actions": ["list", "update", "complete", "reopen", "cancel"],
-        "fields": ["title", "notes", "due_at", "priority"]
+        "actions": [
+          "list",
+          "update",
+          "complete",
+          "reopen",
+          "cancel"
+        ],
+        "fields": [
+          "title",
+          "notes",
+          "due_at",
+          "priority"
+        ]
       }
     },
     "syncStrategy": {
-      "modes": ["interval", "manual"],
+      "modes": [
+        "interval",
+        "manual"
+      ],
       "defaultIntervalSeconds": 300,
       "minIntervalSeconds": 60
     },
@@ -43,7 +59,9 @@
         {
           "id": "template-marks",
           "name": "模板日期标记",
-          "kinds": ["festival"]
+          "kinds": [
+            "festival"
+          ]
         }
       ]
     },
@@ -52,13 +70,28 @@
         {
           "id": "template-overlay",
           "name": "模板日历叠加",
-          "surfaces": ["dayBadge", "summary", "sidebarStat"],
+          "surfaces": [
+            "dayBadge",
+            "summary",
+            "sidebarStat"
+          ],
           "description": "示例：每周六打一个角标，并汇总当前口径的天数。不读任何真实数据"
         }
       ]
     },
-    "hooks": ["task.completed", "task.reopened"],
-    "settingsPanel": ["settings.plugin.json", "settings.integration.json"]
+    "hooks": [
+      "task.completed",
+      "task.reopened"
+    ],
+    "settingsPanel": [
+      "settings.plugin.json",
+      "settings.integration.json"
+    ],
+    "agentTools": {
+      "scope": "integration"
+    }
   },
-  "authMode": ["token"]
+  "authMode": [
+    "token"
+  ]
 }

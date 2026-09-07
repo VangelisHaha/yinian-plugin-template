@@ -4,9 +4,9 @@
   "name": "插件模板",
   "version": "0.1.0",
   "author": "vangelis",
-  "description": "一念插件的官方模板：五个扩展点各一个可跑通的示例",
+  "description": "一念插件的官方模板：六个扩展点各一个可跑通的示例",
   "homepage": "https://github.com/VangelisHaha/yinian-plugin-template",
-  "minHostVersion": "0.5.0",
+  "minHostVersion": "0.12.33",
   "runtime": {
     "kind": "process",
     "node": ">=20",
@@ -44,6 +44,16 @@
           "id": "template-marks",
           "name": "模板日期标记",
           "kinds": ["festival"]
+        }
+      ]
+    },
+    "calendarOverlay": {
+      "providers": [
+        {
+          "id": "template-overlay",
+          "name": "模板日历叠加",
+          "surfaces": ["dayBadge", "summary", "sidebarStat"],
+          "description": "示例：每周六打一个角标，并汇总当前口径的天数。不读任何真实数据"
         }
       ]
     },

@@ -148,6 +148,13 @@ export const TIMEOUTS: Readonly<Record<string, number>> = Object.freeze({
    */
   "dayMarks.list": 8_000,
   /**
+   * 同 `dayMarks.list`：也在 UI 路径上，也不许在调用里发网络请求（契约 §8.4）。
+   *
+   * 差别只在数据归属——它拉的是用户在外部系统里的个人数据，所以默认关闭、
+   * 必须由用户显式启用，关着时宿主根本不会调它。
+   */
+  "calendarOverlay.list": 8_000,
+  /**
    * 多端同步传输（契约 §5.4.5）。put/get 搬字节给得宽，list/delete 是元数据操作。
    *
    * **watch/unwatch 只有 10 秒**：它们只是开关订阅、不做 I/O 等待。返回之后的静默期
@@ -185,6 +192,7 @@ export const RESERVED_METHOD_PREFIXES = [
   "hook.",
   "host.",
   "dayMarks.",
+  "calendarOverlay.",
   "replica.",
 ] as const;
 

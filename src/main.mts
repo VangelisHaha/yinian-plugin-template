@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { start } from "./sdk/index.mjs";
+import * as calendarOverlay from "./handlers/calendarOverlay.mjs";
 import * as config from "./handlers/config.mjs";
 import * as dayMarks from "./handlers/dayMarks.mjs";
 import * as hooks from "./handlers/hooks.mjs";
@@ -50,6 +51,10 @@ start({
 
     // 日期标记（农历 / 节气 / 节日 / 法定节假日）
     "dayMarks.list": dayMarks.list,
+
+    // 日历叠加层（考勤这类**个人数据**的角标与汇总）。
+    // 与 dayMarks 不同：默认关闭，用户在日历侧栏显式打开后宿主才会调它
+    "calendarOverlay.list": calendarOverlay.list,
 
     // 配置
     "config.validate": config.validate,

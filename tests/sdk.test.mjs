@@ -36,6 +36,8 @@ describe("协议常量", () => {
       TIMEOUTS["dayMarks.list"] < TIMEOUTS["notify.send"],
       "日期标记必须比其他扩展点更快超时，否则翻月会卡住",
     );
+    // calendarOverlay.list 同档：也在 UI 路径上
+    assert.equal(TIMEOUTS["calendarOverlay.list"], 8_000);
     // shutdown 只有 5 秒，超了会被 SIGKILL
     assert.equal(TIMEOUTS["plugin.shutdown"], 5_000);
   });
@@ -56,6 +58,8 @@ describe("自定义方法命名", () => {
       "notify.send",
       "hook.dispatch",
       "host.log",
+      "dayMarks.list",
+      "calendarOverlay.list",
     ]) {
       assert.equal(
         isValidCustomMethod(method),

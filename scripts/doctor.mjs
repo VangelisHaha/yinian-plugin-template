@@ -107,6 +107,9 @@ const DAY_MARK_KINDS = new Set([
   "holiday",
 ]);
 
+/** 日历叠加层贴在哪，契约 §8.4。 */
+const OVERLAY_SURFACES = new Set(["dayBadge", "summary", "sidebarStat"]);
+
 /** 宿主强制的间隔下限。 */
 const MIN_INTERVAL_FLOOR = 60;
 
@@ -228,6 +231,7 @@ function checkContributes(manifest, where) {
     "replica",
     "notificationChannel",
     "dayMarks",
+    "calendarOverlay",
     "hooks",
   ];
   const contributed = entryPoints.filter((key) => {
@@ -450,6 +454,76 @@ function checkContributes(manifest, where) {
     }
   }
 
+  const overlay = contributes.calendarOverlay;
+  if (overlay) {
+    const providers = overlay.providers;
+    if (!Array.isArray(providers) || providers.length === 0) {
+      fail(where, "contributes.calendarOverlay 需要非空的 providers");
+    } else {
+      const seen = new Set();
+      for (const provider of providers) {
+        if (!provider || typeof provider !== "object") {
+          fail(where, "calendarOverlay.providers 的每一项必须是对象");
+          continue;
+        }
+        for (const key of ["id", "name"]) {
+          if (typeof provider[key] !== "string" || !provider[key].trim()) {
+            fail(where, `calendarOverlay.providers 里有一项缺少 ${key}`);
+          }
+        }
+        // 理由同 dayMarks，而这里更要紧：provider id 是**启用开关**的身份，
+        // 而那个开关是授权闸门——认错人等于把 A 的授权给了 B
+        if (typeof provider.id === "string" && provider.id.trim()) {
+          if (seen.has(provider.id)) {
+            fail(
+              where,
+              `calendarOverlay.providers 里 id「${provider.id}」重复`,
+            );
+          }
+          seen.add(provider.id);
+        }
+        const surfaces = provider.surfaces;
+        if (!Array.isArray(surfaces) || surfaces.length === 0) {
+          fail(
+            where,
+            `calendarOverlay.providers「${provider.id ?? "?"}」需要非空的 surfaces`,
+          );
+        } else {
+          for (const surface of surfaces) {
+            if (!OVERLAY_SURFACES.has(surface)) {
+              fail(
+                where,
+                `未知的 calendarOverlay surface「${surface}」，合法取值：${[...OVERLAY_SURFACES].join(" / ")}`,
+              );
+            }
+          }
+        }
+        // description 是用户决定要不要授权的唯一依据：这个扩展点默认关闭，
+        // 用户在侧栏看到的就是「名字 + 这一句」。只写「飞书考勤」说不清会显示
+        // 什么、数据从哪来，而他要据此把外部账号的个人数据交出来
+        if (
+          provider.description === undefined ||
+          !String(provider.description).trim()
+        ) {
+          warn(
+            where,
+            `calendarOverlay.providers「${provider.id ?? "?"}」建议给 description——` +
+              "它是用户决定要不要授权的唯一依据，要写清会显示什么、数据从哪来",
+          );
+        }
+        // 宿主一律按偏好盖写启用态，manifest 自称无效。声明了只会让作者以为
+        // 装上就生效，然后去查为什么没有数据
+        if (provider.enabled !== undefined) {
+          warn(
+            where,
+            `calendarOverlay.providers「${provider.id ?? "?"}」不要声明 enabled——` +
+              "启用态由宿主按用户偏好盖写，默认关闭",
+          );
+        }
+      }
+    }
+  }
+
   const panels = contributes.settingsPanel ?? [];
   if (!Array.isArray(panels)) {
     fail(where, "contributes.settingsPanel 必须是数组");
@@ -619,6 +693,7 @@ function checkHandlersMatchContributes(manifest, registered) {
   if ((contributes.hooks ?? []).length > 0) required.push("hook.dispatch");
   if (contributes.notificationChannel) required.push("notify.send");
   if (contributes.dayMarks) required.push("dayMarks.list");
+  if (contributes.calendarOverlay) required.push("calendarOverlay.list");
 
   for (const method of required) {
     if (!registered.has(method)) {
@@ -644,6 +719,12 @@ function checkHandlersMatchContributes(manifest, registered) {
   }
   if (registered.has("dayMarks.list") && !contributes.dayMarks) {
     warn(where, "注册了 dayMarks.list 但没声明 contributes.dayMarks，不会被调用");
+  }
+  if (registered.has("calendarOverlay.list") && !contributes.calendarOverlay) {
+    warn(
+      where,
+      "注册了 calendarOverlay.list 但没声明 contributes.calendarOverlay，不会被调用",
+    );
   }
 }
 

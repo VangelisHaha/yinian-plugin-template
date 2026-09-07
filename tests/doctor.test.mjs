@@ -338,6 +338,84 @@ describe("doctor", () => {
     assert.match(output, /coversUntil 必须是 YYYY-MM-DD/);
   });
 
+  it("查出未知的 calendarOverlay surface", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.calendarOverlay.providers[0].surfaces = [
+          "weekBadge",
+        ];
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /未知的 calendarOverlay surface/);
+  });
+
+  it("calendarOverlay 的 surfaces 不能为空", () => {
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.calendarOverlay.providers[0].surfaces = [];
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /需要非空的 surfaces/);
+  });
+
+  it("calendarOverlay 的 provider id 重复要报错", () => {
+    // 这里比 dayMarks 更要紧：provider id 是**启用开关**的身份，而那个开关是
+    // 授权闸门——认错人等于把 A 的授权给了 B
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        const first = manifest.contributes.calendarOverlay.providers[0];
+        manifest.contributes.calendarOverlay.providers.push({ ...first });
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /重复/);
+  });
+
+  it("calendarOverlay 声明了却没注册 list 要报错", () => {
+    const dir = stage((dir) => {
+      const entry = join(dir, "src", "main.mts");
+      writeFileSync(
+        entry,
+        readText(entry).replace(
+          '"calendarOverlay.list": calendarOverlay.list,',
+          "",
+        ),
+      );
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 1);
+    assert.match(output, /没有注册 calendarOverlay\.list/);
+  });
+
+  it("manifest 自称 enabled 只是警告，不阻塞", () => {
+    // 启用态一律由宿主按偏好盖写。声明了只会让作者以为装上就生效
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        manifest.contributes.calendarOverlay.providers[0].enabled = true;
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 0);
+    assert.match(output, /不要声明 enabled/);
+  });
+
+  it("缺 description 只是警告", () => {
+    // 它是用户决定要不要授权的唯一依据，但缺了不该拦住构建
+    const dir = stage((dir) => {
+      patchManifest(dir, (manifest) => {
+        delete manifest.contributes.calendarOverlay.providers[0].description;
+      });
+    });
+    const { code, output } = runDoctor(dir);
+    assert.equal(code, 0);
+    assert.match(output, /建议给 description/);
+  });
+
   it("声明 dayMarks 但没注册 dayMarks.list 要报错", () => {
     const dir = stage((dir) => {
       const path = join(dir, "src", "main.mts");

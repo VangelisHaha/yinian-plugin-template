@@ -19,6 +19,7 @@ import * as dayMarks from "./handlers/dayMarks.mjs";
 import * as hooks from "./handlers/hooks.mjs";
 import * as notify from "./handlers/notify.mjs";
 import * as sync from "./handlers/sync.mjs";
+import * as widget from "./handlers/widget.mjs";
 
 /** 版本只维护在 manifest 一处，避免和 package.json 漂移。 */
 function readManifestVersion(): string {
@@ -57,6 +58,10 @@ start({
     // 日历叠加层（考勤这类**个人数据**的角标与汇总）。
     // 与 dayMarks 不同：默认关闭，用户在日历侧栏显式打开后宿主才会调它
     "calendarOverlay.list": calendarOverlay.list,
+
+    // 浮窗小组件（桌面端浮窗上的一张卡片）。同样默认关闭：浮窗是常驻置顶窗口，
+    // 「装了插件」不等于「同意把我的数据画在屏幕最上层」
+    "widget.render": widget.render,
 
     // 配置
     "config.validate": config.validate,

@@ -698,6 +698,124 @@ export interface CalendarOverlayListResult {
   sidebarStats?: OverlaySummaryItem[];
 }
 
+// ── 浮窗小组件（契约 §8.5） ───────────────────────────────────────────────
+//
+// 桌面端的「小组件」载体是**浮窗**：一列卡片，你的卡片和一念内置的那几张并排。
+// 与 `calendarOverlay` 同构——你返回结构化数据，宿主用自己的组件画。**没有 HTML、
+// 没有 iframe、没有 `layout: "custom"`**：留了那个逃生口，所有插件都会走它，四种
+// 布局就白定义了，而一列长得各不一样的卡片会让浮窗彻底散掉。
+//
+// 三条最容易踩的：
+//
+// 1. **默认关闭，第一次被调到就是授权信号。** 浮窗是常驻置顶窗口，可能出现在会议投屏、
+//    结对编程、录屏里。「装了插件」不等于「同意把我的会议标题画在屏幕最上层」——
+//    在收到第一次 `widget.render` 之前，不要去拉用户的个人数据。
+// 2. **不许在 `render` 里联网。** 超时 8 秒，浮窗要在一帧内出来。刷新走你自己的后台
+//    节奏、写进 `dataDir`，`render` 只读缓存。
+// 3. **`time` 是已格式化好的字符串**，不是时间戳。宿主不知道你的时刻该显示成几点制、
+//    带不带日期。同理 `value` 也已格式化——宿主不对它做算术。
+
+/** 卡片形态。宿主据此选渲染器，**未知取值会让插件装不上**（不会静默退化成 list）。 */
+export type WidgetLayout = "list" | "metrics" | "timeline" | "text";
+
+/**
+ * 语义档位，**不是颜色**。理由同 [`OverlayTone`]：一念只有单一强调色且它有既定语义，
+ * 插件带色相进来必然互相打架，深色主题下还会对比不足。
+ *
+ * `mute` 同时承担「值是零」：`value` 是字符串，宿主看不出 `"0"` 是零。
+ */
+export type WidgetTone = OverlayTone;
+
+/** 行首标记。封闭的一小组形状，不收 SVG / emoji / 字符。 */
+export type WidgetMark = "none" | "dot" | "bar";
+
+/**
+ * 行上的跳转。**只有两种。**
+ *
+ * 没有 `write`、没有 `rpc`：小组件是只读投影。给它一个能回调插件的 action 就等于在
+ * UI 路径上开了一条任意 RPC 通道，而用户点的时候只以为自己在打开一个链接。
+ *
+ * - `open`：**必须 `https://`**（http 也会被拒），走系统浏览器，宿主在行上显示域名
+ * - `deeplink`：`yinian://`，内部跳转
+ *
+ * 协议对不上时宿主**只摘掉 action、保留这一行**——那一行的信息本身没错。
+ */
+export interface WidgetAction {
+  kind: "open" | "deeplink";
+  url: string;
+}
+
+export interface WidgetRow {
+  /** 本次返回里唯一。缺失或重复时宿主会改写（React 会复用错节点）。 */
+  key: string;
+  /** **已格式化好的**时刻字符串（`21:30`），宿主原样显示。 */
+  time?: string;
+  /** 主文，一行。**空的行会被丢弃**——没有主文的行在界面上是一片留白。 */
+  primary: string;
+  /** 副文，一行。地点、发件人、来源。 */
+  secondary?: string;
+  /** 行尾一小段（时长、数量），宿主走等宽。 */
+  trailing?: string;
+  tone?: WidgetTone;
+  mark?: WidgetMark;
+  action?: WidgetAction;
+  /**
+   * `layout: "timeline"` 时的当天分钟数（0–1439）。
+   *
+   * **给不出分钟数的条目不要丢**：宿主会把它退化成普通行排在后面——一个「时间待定」的
+   * 会议仍然是今天要开的会。也不要给它编一个时刻，编出来的会被当真。
+   */
+  startMinute?: number;
+  /** 结束分钟数。倒挂或越界时宿主按缺省时长画。 */
+  endMinute?: number;
+}
+
+export interface WidgetMetric {
+  key: string;
+  /** 指标名，2–4 字。 */
+  label: string;
+  /** **已格式化好的字符串**，原样显示。「零」用 `tone: "mute"` 说。 */
+  value: string;
+  tone?: WidgetTone;
+}
+
+export interface WidgetRenderRequest {
+  /** 要问哪个 provider，对应 manifest 里声明的 `id`（不带插件前缀）。 */
+  providerId: string;
+  /** 当天的本地日期键 `YYYY-MM-DD`。 */
+  date: string;
+  /**
+   * 当前时刻，RFC 3339 带偏移。
+   *
+   * **用它算倒计时，不要自己读钟**：宿主画「现在线」用的是同一个时刻，各读一次的结果是
+   * 轨道上的现在线与行尾的倒计时差出几秒到几分，而那种不一致看起来就是 bug。
+   */
+  now: string;
+  /** 当前界面语言。文案 100% 由你给，认不出时按默认语言输出、不要报错。 */
+  locale: string;
+  /** 宿主希望最多几行。可以少给，多给的会被截断。 */
+  maxRows: number;
+}
+
+export interface WidgetRenderResult {
+  /** `list` / `timeline` 的行，最多 8 行，超出丢弃。 */
+  rows?: WidgetRow[];
+  /** `metrics` 的格子，最多 4 项。 */
+  metrics?: WidgetMetric[];
+  /** `text` 的正文，最多 3 行（按换行算）。 */
+  text?: string;
+  /** 卡片底部一行小字（「5 分钟前更新」）。 */
+  footer?: string;
+  /**
+   * 没有内容时显示什么。**由你给。**
+   *
+   * 宿主不写一句通用的「暂无数据」：「今天没有会议了」与「收件箱是空的」是两种不同的
+   * 好消息，而宿主不知道这张卡片在讲什么。注意它与「取不到」是两件事——后者宿主自己有
+   * 一句话，并且会**保留卡片**（消失会被读成「我是不是配错了」）。
+   */
+  empty?: string;
+}
+
 // ── 设置面板 ─────────────────────────────────────────────────────────────
 
 export type SettingsFieldType =

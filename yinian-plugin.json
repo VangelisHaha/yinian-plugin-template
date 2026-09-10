@@ -79,6 +79,17 @@
         }
       ]
     },
+    "widget": {
+      "providers": [
+        {
+          "id": "template-widget",
+          "name": "模板小组件",
+          "layout": "timeline",
+          "description": "示例：列出今天剩下的整点时段与距现在多久。不读任何真实数据",
+          "refreshSeconds": 300
+        }
+      ]
+    },
     "hooks": [
       "task.completed",
       "task.reopened"

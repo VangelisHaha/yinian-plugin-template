@@ -6,6 +6,7 @@
  *
  *   plugin.init → config.validate → sync.pull → sync.push
  *   → hook.dispatch（含一次重复投递，验证幂等）→ notify.send → dayMarks.list
+ *   → widget.render
  *   → plugin.shutdown
  *
  * 它同时在做四件真实宿主也会做的事，所以能提前暴露契约问题：
@@ -42,6 +43,8 @@ const TIMEOUTS = {
   "hook.dispatch": 30_000,
   "notify.send": 30_000,
   "dayMarks.list": 8_000,
+  // 与 dayMarks 同档：在 UI 路径上，浮窗按一下热键就要出来
+  "widget.render": 8_000,
   "plugin.shutdown": 5_000,
 };
 const DEFAULT_TIMEOUT = 15_000;
@@ -473,6 +476,74 @@ async function main() {
         }
         console.log(
           `✓ dayMarks.list（${provider.id}，${page.marks.length} 条标记）`,
+        );
+      }
+    }
+
+    if (contributes.widget) {
+      const providers = contributes.widget.providers ?? [];
+      for (const provider of providers) {
+        const result = await host.call("widget.render", {
+          providerId: provider.id,
+          date: "2026-09-10",
+          // 时刻由宿主下发，插件不自己读钟——两边各读一次会让倒计时和现在线对不上
+          now: "2026-09-10T14:05:00+08:00",
+          locale: "zh-CN",
+          maxRows: 8,
+        });
+        assert(
+          result !== null && typeof result === "object",
+          "widget.render 必须返回对象",
+        );
+        const rows = result.rows ?? [];
+        assert(Array.isArray(rows), "widget.render 的 rows 必须是数组");
+        for (const row of rows) {
+          // 没有主文的行在界面上是一片留白，宿主会丢掉它
+          assert(
+            typeof row?.primary === "string" && row.primary.trim().length > 0,
+            "widget.render 的每一行都要有非空 primary",
+          );
+          assert(
+            typeof row?.key === "string" && row.key.length > 0,
+            "widget.render 的每一行都要有 key（宿主用它做渲染 key）",
+          );
+          if (row.action) {
+            // 只有 https / yinian 会被放行，http 也会被拒
+            const ok =
+              (row.action.kind === "open" &&
+                row.action.url.startsWith("https://")) ||
+              (row.action.kind === "deeplink" &&
+                row.action.url.startsWith("yinian://"));
+            assert(
+              ok,
+              `widget.render 的 action 协议不被允许：${row.action.kind} ${row.action.url}`,
+            );
+          }
+          if (row.tone) {
+            assert(
+              ["neutral", "strong", "mute", "alert"].includes(row.tone),
+              `widget.render 的 tone 不合法：「${row.tone}」`,
+            );
+          }
+        }
+        if (rows.length > 8) {
+          console.warn(
+            `[warn] widget.render 返回了 ${rows.length} 行，宿主只画前 8 行`,
+          );
+        }
+        // 没数据时要给 empty：宿主自己那句「暂时取不到」是留给失败的，两者不是一回事
+        if (
+          rows.length === 0 &&
+          (result.metrics ?? []).length === 0 &&
+          !result.text
+        ) {
+          assert(
+            typeof result.empty === "string" && result.empty.length > 0,
+            "widget.render 没有内容时必须给 empty 文案",
+          );
+        }
+        console.log(
+          `✓ widget.render（${provider.id}，${rows.length} 行 / layout=${provider.layout}）`,
         );
       }
     }

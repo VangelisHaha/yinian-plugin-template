@@ -21,7 +21,7 @@
       "label": "自动打上这些标签",
       "optionsFrom": "host:tags",
       "maxItems": 5,
-      "help": "选项来自一念现有的标签，不用手抄"
+      "help": "选项来自安时现有的标签，不用手抄"
     },
     {
       "key": "advanced",

@@ -1,6 +1,6 @@
 # AGENTS.md — yinian-plugin-template
 
-[一念（Yinian）](https://github.com/VangelisHaha/nikou-agenda)插件的**官方模板**。它有两个身份：一份能跑的示例插件，和一份给插件作者看的文档。改动时两个身份都要顾。
+[安时（Nuncta）](https://github.com/VangelisHaha/nikou-agenda)插件的**官方模板**。它有两个身份：一份能跑的示例插件，和一份给插件作者看的文档。改动时两个身份都要顾。
 
 ## 必须遵守
 
@@ -14,14 +14,14 @@
 
 | 内容 | 权威位置 |
 |---|---|
-| manifest、RPC、权限、设置面板、错误码 | 一念仓库 `docs/11-plugin-architecture.md` |
+| manifest、RPC、权限、设置面板、错误码 | 安时仓库 `docs/11-plugin-architecture.md` |
 | 市场索引字段 | `yinian-plugins` 仓库 `schema.json` |
 
 `src/sdk/` 只是契约的一个 TypeScript 实现。**契约变了要先改文档，再同步这里**，反过来不行。SDK 当前对应 `PROTOCOL_VERSION = 1`。
 
 同步范围包括：`protocol.mts` 的超时表与方法名规则、`types.mts` 的 DTO 字段、`doctor.mjs` 里那几张枚举白名单（hook topic、sync action / field、调度模式、字段类型、**dayMark kind**）、`mock-host.mjs` 的超时表**与生命周期段落**。这几处任何一处漏改，doctor 就会给出与宿主不一致的判断——那比不检查更糟。
 
-`mock-host.mjs` 不只是超时表要同步：新增扩展点时要给它加一段真实调用并校验返回值形状，否则插件作者本地跑 `npm run mock` 看不到那条链路，只能装进一念才发现问题。
+`mock-host.mjs` 不只是超时表要同步：新增扩展点时要给它加一段真实调用并校验返回值形状，否则插件作者本地跑 `npm run mock` 看不到那条链路，只能装进安时才发现问题。
 
 ## SDK 的设计约束
 
@@ -34,7 +34,7 @@
 
 ## doctor 的定位
 
-它回答的是「这个包装进一念会不会被拒」，不是「代码写得好不好」。所以：
+它回答的是「这个包装进安时会不会被拒」，不是「代码写得好不好」。所以：
 
 - 只检查契约层面的东西，不做风格检查；
 - 警告不影响退出码（间隔低于下限、声明了用不到的权限这类）；
@@ -46,7 +46,7 @@
 
 ## mock host 的定位
 
-它模拟真实宿主的行为，让插件作者不装一念也能开发。它必须同时做真实宿主会做的校验：拒绝非 JSON 行、拒绝插件主动发 request、按契约超时表掐时间。少做一样，就会出现「mock 通过但装进一念失败」——那会让人不再信任它。
+它模拟真实宿主的行为，让插件作者不装安时也能开发。它必须同时做真实宿主会做的校验：拒绝非 JSON 行、拒绝插件主动发 request、按契约超时表掐时间。少做一样，就会出现「mock 通过但装进安时失败」——那会让人不再信任它。
 
 ## AI 工具扩展（0.13.0 契约）
 

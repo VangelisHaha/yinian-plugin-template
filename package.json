@@ -1,7 +1,7 @@
 {
   "name": "yinian-plugin-template",
   "version": "0.2.0",
-  "description": "一念（Yinian）插件官方模板：薄 SDK + mock host + 契约自检",
+  "description": "安时（Nuncta）插件官方模板：薄 SDK + mock host + 契约自检",
   "type": "module",
   "private": true,
   "engines": {

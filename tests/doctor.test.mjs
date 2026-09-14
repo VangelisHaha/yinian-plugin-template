@@ -85,13 +85,13 @@ describe("doctor", () => {
   it("查出不合规的 id 与版本号", () => {
     const dir = stage((dir) => {
       patchManifest(dir, (manifest) => {
-        manifest.id = "Yinian_Bad";
+        manifest.id = "Nuncta_Bad";
         manifest.version = "v1";
       });
     });
     const { code, output } = runDoctor(dir);
     assert.equal(code, 1);
-    assert.match(output, /id「Yinian_Bad」/);
+    assert.match(output, /id「Nuncta_Bad」/);
     assert.match(output, /version「v1」不是合法 semver/);
   });
 

@@ -6,7 +6,7 @@
  *
  * ## 三条容易踩的规则
  *
- * 1. **插件不写库**。返回数据就够了，冲突判定、去重、落库全在一念核心。
+ * 1. **插件不写库**。返回数据就够了，冲突判定、去重、落库全在安时核心。
  *    你也拿不到本地任务——`sync.pull` 的参数里没有本地状态，这是故意的。
  * 2. **分页要靠游标**，别一次返回全部。`hasMore: true` 时宿主会带着你给的
  *    `cursor` 再调一次，最多 20 轮。
@@ -49,7 +49,7 @@ const REMOTE: ExternalItem[] = [
         kind: "link",
       },
     ],
-    // 未识别的字段放这里，一念会原样存下来
+    // 未识别的字段放这里，安时会原样存下来
     remoteData: { source: "template", assignee: "someone" },
   },
   {
@@ -89,7 +89,7 @@ export async function pull(request: PullRequest): Promise<PullResult> {
     items: page,
     ...(hasMore ? { cursor: encodeCursor(nextOffset) } : {}),
     hasMore,
-    // 外部删掉的 id 报给宿主。一念不会删本地任务，只标记等人处理
+    // 外部删掉的 id 报给宿主。安时不会删本地任务，只标记等人处理
     deletedExternalIds: [],
   };
 }
@@ -127,9 +127,9 @@ export async function push(request: PushRequest): Promise<PushResult> {
       break;
 
     case "update":
-      // 只改 changedFields 里的字段，别整条覆盖——外部可能有一念不认识的字段。
+      // 只改 changedFields 里的字段，别整条覆盖——外部可能有安时不认识的字段。
       //
-      // 注意「设为空」与「不改」是两件事：一念把清空表达为 undefined，
+      // 注意「设为空」与「不改」是两件事：安时把清空表达为 undefined，
       // 而多数外部 API 需要显式传 null 才算清空。这里用删除键代表清空，
       // 换成真实 API 时请照它的约定来。
       for (const field of request.changedFields ?? []) {

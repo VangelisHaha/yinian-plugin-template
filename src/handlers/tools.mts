@@ -51,7 +51,7 @@ export const demoTools: ToolDefinition[] = [
   {
     name: "list_schedule",
     title: "查询模拟排期",
-    description: "查询 Demo 排期，支持关键词；不修改一念数据。",
+    description: "查询 Demo 排期，支持关键词；不修改安时数据。",
     effect: "read",
     inputSchema: {
       type: "object",
@@ -92,7 +92,7 @@ export const demoTools: ToolDefinition[] = [
   {
     name: "create_task",
     title: "创建并同步模拟任务",
-    description: "在一念创建任务并关联 Demo 外部任务。",
+    description: "在安时创建任务并关联 Demo 外部任务。",
     effect: "write",
     idempotent: true,
     binding: "task",
@@ -107,7 +107,7 @@ export const demoTools: ToolDefinition[] = [
   {
     name: "create_event",
     title: "创建并同步模拟日程",
-    description: "在一念创建日程并转入 Demo 外部只读日历。",
+    description: "在安时创建日程并转入 Demo 外部只读日历。",
     effect: "write",
     idempotent: true,
     binding: "event",
